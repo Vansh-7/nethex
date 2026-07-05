@@ -1,0 +1,27 @@
+# Build Artifacts & CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+compile_commands.json
+
+# Executables & Libraries
+*.exe
+*.out
+*.app
+*.dll
+*.so
+*.lib
+*.a
+
+# Editor/IDE Configurations
+.vscode/
+.vs/
+*.swp
+
+# Traffic Captures
+*.pcap
+*.cap
+*.pcapng
