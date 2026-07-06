@@ -17,6 +17,7 @@ endif()
 add_executable(nethex
     src/main.cpp
     src/pcap_reader.cpp
+    src/packet_parser.cpp
 )
 
 # Specify where the headers live
