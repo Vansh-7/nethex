@@ -1,5 +1,4 @@
 #pragma once
-
 #include <cstdint>
 
 namespace NetHex {
@@ -7,9 +6,8 @@ namespace NetHex {
     // ------------------------------------------------------------------------
     // PACKING ENFORCEMENT
     // ------------------------------------------------------------------------
-    // Force the compiler to pack these structs exactly byte-for-byte (1-byte alignment).
-    // This prevents the compiler from adding invisible padding, ensuring our 
-    // structs perfectly match the raw bytes coming off the network wire.
+    // force the compiler to pack these structs exactly byte-for-byte (1-byte alignment)
+    // prevents the compiler from adding invisible padding
     #pragma pack(push, 1)
 
     // ------------------------------------------------------------------------
@@ -50,7 +48,7 @@ namespace NetHex {
         uint32_t seq_num;        // Sequence Number
         uint32_t ack_num;        // Acknowledgment Number
         
-        // Data offset (4 bits), Reserved (3 bits), Flags (9 bits)
+        // Data offset (4 bits), Reserved (6 bits), Flags (6 bits)
         // Handled as a 16-bit integer to avoid bitfield layout issues.
         uint16_t offset_reserved_flags; 
         

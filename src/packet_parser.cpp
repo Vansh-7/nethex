@@ -1,49 +1,129 @@
 #include "packet_parser.h"
 #include "platform.h"
-#include <iomanip>
 
 namespace NetHex {
 
-    bool PacketParser::parse_ethernet(const uint8_t* packet_data, uint32_t packet_length, uint16_t& next_protocol) {
+    bool PacketParser::parse_ethernet(const uint8_t* packet_data, 
+                                      uint32_t packet_length, 
+                                      uint32_t& offset, 
+                                      uint16_t& next_protocol) {
         // Safety check: Is the packet even large enough to have an Ethernet header?
-        if (packet_length < sizeof(EthernetHeader)) {
+        if (packet_length < offset + sizeof(EthernetHeader)) {
             return false;
         }
 
         // Cast the raw bytes into our packed struct
-        const EthernetHeader* eth_header = reinterpret_cast<const EthernetHeader*>(packet_data);
+        const EthernetHeader* eth_header = reinterpret_cast<const EthernetHeader*>(packet_data + offset);
 
-        // Network traffic is Big-Endian. We must convert the EtherType to our Host's Endianness.
+        // Convert the EtherType to our Host's Endianness
         next_protocol = ntoh16(eth_header->ethertype);
 
-        // Print MAC Addresses for debugging
-        std::cout << "   [L2] Src MAC: ";
-        for(int i=0; i<6; i++) std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)eth_header->src_mac[i] << (i < 5 ? ":" : "");
-        
-        std::cout << " -> Dest MAC: ";
-        for(int i=0; i<6; i++) std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)eth_header->dest_mac[i] << (i < 5 ? ":" : "");
-        std::cout << std::dec << std::endl; // Reset to decimal
+        // Advance the offset by exactly the size of the Ethernet II header (14 bytes)
+        offset += sizeof(EthernetHeader);
 
         return true;
     }
 
-    bool PacketParser::parse_ipv4(const uint8_t* packet_data, uint32_t packet_length, uint32_t offset) {
+    bool PacketParser::parse_ipv4(const uint8_t* packet_data, 
+                                  uint32_t packet_length, 
+                                  uint32_t& offset,
+                                  uint32_t& src_ip,
+                                  uint32_t& dest_ip,
+                                  uint8_t& next_protocol) {
+        // Base safety check for the minimum IPv4 header size
         if (packet_length < offset + sizeof(IPv4Header)) {
             return false;
         }
 
         const IPv4Header* ip_header = reinterpret_cast<const IPv4Header*>(packet_data + offset);
 
-        // Convert the IPs from Network Endian to Host Endian for reading
-        uint32_t src_ip = ntoh32(ip_header->src_ip);
-        uint32_t dest_ip = ntoh32(ip_header->dest_ip);
+        // Extract IPs in Host Endian format
+        src_ip = ntoh32(ip_header->src_ip);
+        dest_ip = ntoh32(ip_header->dest_ip);
+        next_protocol = ip_header->protocol;
 
-        // Extracting standard IP format (A.B.C.D) using bitwise shifts
-        std::cout << "   [L3] IPv4: " 
-                  << ((src_ip >> 24) & 0xFF) << "." << ((src_ip >> 16) & 0xFF) << "." << ((src_ip >> 8) & 0xFF) << "." << (src_ip & 0xFF)
-                  << " -> "
-                  << ((dest_ip >> 24) & 0xFF) << "." << ((dest_ip >> 16) & 0xFF) << "." << ((dest_ip >> 8) & 0xFF) << "." << (dest_ip & 0xFF)
-                  << std::endl;
+        // Calculate the actual header length using the IHL (Internet Header Length) field.
+        // IHL is the lower 4 bits of the version_ihl byte. It represents the length in 32-bit words.
+        uint8_t ihl = ip_header->version_ihl & 0x0F;
+        uint32_t actual_header_bytes = ihl * 4;
+
+        // Secondary safety check in case of malformed network packets advertising a fake IHL
+        if (packet_length < offset + actual_header_bytes) {
+            return false;
+        }
+
+        // Advance the offset dynamically so Layer 4 (TCP/UDP) knows exactly where to start
+        offset += actual_header_bytes;
+
+        return true;
+    }
+
+    bool PacketParser::parse_tcp(const uint8_t* packet_data, 
+                                 uint32_t packet_length, 
+                                 uint32_t& offset,
+                                 uint16_t& src_port,
+                                 uint16_t& dest_port,
+                                 uint8_t& tcp_flags) {
+
+        // Base safety check for the minimum TCP header size (20 bytes)
+        if (packet_length < offset + sizeof(TCPHeader)) {
+            return false;
+        }
+
+        const TCPHeader* tcp_header = reinterpret_cast<const TCPHeader*>(packet_data + offset);
+
+        // Convert Ports from Network Endian to Host Endian
+        src_port = ntoh16(tcp_header->src_port);
+        dest_port = ntoh16(tcp_header->dest_port);
+
+        // The "offset_reserved_flags" is a 16-bit chunk. We MUST convert its endianness 
+        // before we try to extract individual bits using bitwise operations!
+        uint16_t off_res_flags = ntoh16(tcp_header->offset_reserved_flags);
+
+        // 1. Extract the TCP Flags (The lowest 8 bits of the 16-bit chunk)
+        // Mask: 0x00FF (0000 0000 1111 1111 in binary)
+        tcp_flags = off_res_flags & 0x00FF;
+
+        // 2. Extract the Data Offset (The highest 4 bits of the 16-bit chunk)
+        // We shift the bits right by 12 spaces to push the 4 bits to the bottom, then mask.
+        uint8_t data_offset = (off_res_flags >> 12) & 0x0F;
+        
+        // The Data Offset tells us the header length in 32-bit words (just like IPv4 IHL)
+        uint32_t actual_header_bytes = data_offset * 4;
+
+        // Secondary safety check in case of malformed packets advertising a fake offset
+        if (packet_length < offset + actual_header_bytes) {
+            return false;
+        }
+
+        // Advance the offset dynamically. 
+        // The offset now points EXACTLY to the start of the Application Payload (e.g., HTTP data)!
+        offset += actual_header_bytes;
+
+        return true;
+    }
+
+    bool PacketParser::parse_udp(const uint8_t* packet_data, 
+                                 uint32_t packet_length, 
+                                 uint32_t& offset,
+                                 uint16_t& src_port,
+                                 uint16_t& dest_port) {
+        
+        // Safety check for the exact UDP header size (8 bytes)
+        if (packet_length < offset + sizeof(UDPHeader)) {
+            return false;
+        }
+
+        const UDPHeader* udp_header = reinterpret_cast<const UDPHeader*>(packet_data + offset);
+
+        // Convert Ports from Network Endian to Host Endian
+        src_port = ntoh16(udp_header->src_port);
+        dest_port = ntoh16(udp_header->dest_port);
+
+        // Advance the offset dynamically. 
+        // UDP headers are strictly 8 bytes, so we just add the struct size!
+        // The offset now points EXACTLY to the start of the Application Payload (e.g., DNS data).
+        offset += sizeof(UDPHeader);
 
         return true;
     }
