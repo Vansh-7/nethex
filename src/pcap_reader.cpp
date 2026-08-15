@@ -5,7 +5,7 @@ namespace NetHex {
 
     PcapFileReader::PcapFileReader(const std::string& path) 
         : file_path(path), packet_buffer(65535) { 
-        // 65535 is the standard maximum size of a network packet.
+        // 65535 (64KB) is the standard maximum size of a network packet.
         // We pre-allocate this vector ONCE, saving massive CPU cycles later.
     }
 
@@ -25,12 +25,13 @@ namespace NetHex {
         PcapGlobalHeader global_header;
         file_stream.read(reinterpret_cast<char*>(&global_header), sizeof(PcapGlobalHeader));
 
-        if (!file_stream) {
+        // 2. Check explicitly if the read operation failed
+        if (file_stream.fail()) {
             std::cerr << "[NetHex] Error: Failed to read PCAP global header." << std::endl;
             return false;
         }
 
-        // 2. Validate the Magic Number (0xa1b2c3d4 is standard microsecond resolution)
+        // 3. Validate the Magic Number (0xa1b2c3d4 is standard microsecond resolution)
         if (global_header.magic_number != 0xa1b2c3d4 && global_header.magic_number != 0xa1b23c4d) {
             std::cerr << "[NetHex] Error: Invalid PCAP magic number." << std::endl;
             return false;
