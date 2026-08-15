@@ -23,12 +23,24 @@ int main() {
             if (packet_count <= 3) {
                 std::cout << "\n[+] Packet #" << packet_count << " (Size: " << packet_length << " bytes)" << std::endl;
                 
+                // 1. Initialize the offset for this specific packet
+                uint32_t offset = 0;
                 uint16_t next_protocol = 0;
-                if (NetHex::PacketParser::parse_ethernet(packet_data, packet_length, next_protocol)) {
+                
+                // 2. Parse Layer 2 (Ethernet). This will automatically advance the 'offset' by 14
+                if (NetHex::PacketParser::parse_ethernet(packet_data, packet_length, offset, next_protocol)) {
+                    
                     // EtherType 0x0800 means the encapsulated data is IPv4
                     if (next_protocol == 0x0800) {
-                        // Offset the pointer by the size of the Ethernet header to get to the IP header
-                        NetHex::PacketParser::parse_ipv4(packet_data, packet_length, sizeof(NetHex::EthernetHeader));
+                        
+                        uint32_t src_ip = 0, dest_ip = 0;
+                        uint8_t l4_protocol = 0;
+                        
+                        // 3. Parse Layer 3 (IPv4). Notice we just pass the 'offset' directly!
+                        if (NetHex::PacketParser::parse_ipv4(packet_data, packet_length, offset, src_ip, dest_ip, l4_protocol)) {
+                            std::cout << "    [L3] IPv4 Parsed Successfully. Next Protocol: " << (int)l4_protocol << std::endl;
+                            // The offset is now perfectly positioned for Layer 4 (TCP/UDP)
+                        }
                     }
                 }
             }
