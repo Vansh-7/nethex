@@ -4,11 +4,12 @@ FROM ubuntu:22.04
 # 2. Prevent Ubuntu from pausing the build to ask for timezone inputs
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 3. Install our exact build tools and dependencies (libpcap)
+# 3. Install our exact build tools and dependencies (libpcap and xxHash)
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libpcap-dev \
+    libxxhash-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 4. Create a working directory inside the container

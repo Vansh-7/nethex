@@ -14,6 +14,14 @@ if(NOT PCAP_INCLUDE_DIR OR NOT PCAP_LIBRARY)
     message(FATAL_ERROR "PCAP library not found! Please install libpcap-dev.")
 endif()
 
+# find the xxHash header and library
+find_path(XXHASH_INCLUDE_DIR xxhash.h)
+find_library(XXHASH_LIBRARY xxhash)
+
+if(NOT XXHASH_INCLUDE_DIR OR NOT XXHASH_LIBRARY)
+    message(FATAL_ERROR "xxHash library not found! Please install libxxhash-dev.")
+endif()
+
 # static lib for core engine
 add_library(nethex_core STATIC 
     src/pcap_reader.cpp
@@ -30,8 +38,8 @@ elseif(MSVC)
     target_compile_options(nethex_core PRIVATE /W4 /WX /O2)
 endif()
 
-# Link libpcap to our core library
-target_link_libraries(nethex_core PUBLIC ${PCAP_LIBRARY})
+# Link libpcap AND xxHash to our core library
+target_link_libraries(nethex_core PUBLIC ${PCAP_LIBRARY} ${XXHASH_LIBRARY})
 target_include_directories(nethex_core PUBLIC ${PCAP_INCLUDE_DIRS})
 
 # Link the Windows Socket library if compiling on Windows
