@@ -24,6 +24,11 @@ int main() {
         while (reader->read_next_packet(packet_data, packet_length)) {
             packet_count++;
             
+            // Run the Garbage Collector every 1000 packets
+            if (packet_count % 1000 == 0) {
+                tracker.evict_stale_sessions();
+            }
+
             // Initialize the offset for this specific packet
             uint32_t offset = 0;
             uint16_t next_protocol = 0;
@@ -72,7 +77,11 @@ int main() {
         }
 
         std::cout << "\n[NetHex] Successfully ingested " << packet_count << " packets." << std::endl;
-        std::cout << "[NetHex] Total Active Flows Tracked: " << tracker.get_active_flow_count() << std::endl;
+        
+        // Final cleanup before shutting down!
+        tracker.evict_stale_sessions();
+
+        std::cout << "[NetHex] Total Active Flows Remaining: " << tracker.get_active_flow_count() << std::endl;
         reader->close();
     } else {
         std::cout << "[NetHex] Note: Please drop a 'sample.pcap' file into your working directory to test ingestion." << std::endl;

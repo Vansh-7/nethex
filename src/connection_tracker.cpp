@@ -63,6 +63,47 @@ namespace NetHex {
         }
     }
 
+    void ConnectionTracker::evict_stale_sessions() {
+        auto now = std::chrono::steady_clock::now();
+        size_t evicted_count = 0;
+
+        // Notice we do NOT have a ++it in the loop definition. 
+        // We control the iterator manually to prevent Segmentation Faults!
+        for (auto it = flow_table.begin(); it != flow_table.end(); ) {
+            const Connection& conn = it->second;
+            
+            // Calculate how many seconds have passed since we last saw a packet for this flow
+            auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - conn.last_seen).count();
+
+            bool should_evict = false;
+
+            // --- THE EVICTION RULES ---
+            if (conn.state == TcpState::CLOSED) {
+                should_evict = true; // 1. It closed properly. Drop it instantly.
+            } 
+            else if (conn.state == TcpState::SYN_SENT && duration_seconds > 10) {
+                should_evict = true; // 2. SYN Flood Protection! No reply after 10 seconds? Kill it.
+            } 
+            else if (conn.state == TcpState::ESTABLISHED && duration_seconds > 300) {
+                should_evict = true; // 3. Idle Timeout. No data for 5 minutes? Kill it.
+            }
+
+            // --- THE SAFE DELETION ---
+            if (should_evict) {
+                // .erase() safely deletes the flow and returns a valid iterator to the next one
+                it = flow_table.erase(it); 
+                evicted_count++;
+            } else {
+                // If we didn't delete it, we manually move to the next flow
+                ++it; 
+            }
+        }
+
+        if (evicted_count > 0) {
+            std::cout << "[Garbage Collector] Evicted " << evicted_count << " stale flows. Active memory: " << flow_table.size() << " flows." << std::endl;
+        }
+    }
+
     size_t ConnectionTracker::get_active_flow_count() const {
         return flow_table.size();
     }
