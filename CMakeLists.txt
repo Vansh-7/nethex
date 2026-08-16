@@ -26,6 +26,7 @@ endif()
 add_library(nethex_core STATIC 
     src/pcap_reader.cpp
     src/packet_parser.cpp
+    src/connection_tracker.cpp
 ) 
 
 # Specify where the headers live
