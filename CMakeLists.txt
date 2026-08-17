@@ -27,6 +27,8 @@ add_library(nethex_core STATIC
     src/pcap_reader.cpp
     src/packet_parser.cpp
     src/connection_tracker.cpp
+    src/dpi_engine.cpp
+    src/sni_extractor.cpp
 ) 
 
 # Specify where the headers live

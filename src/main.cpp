@@ -3,16 +3,16 @@
 #include "packet_parser.h"
 #include "connection_tracker.h"
 #include "five_tuple.h"
+#include "dpi_engine.h"
 #include <iostream>
 
 int main() {
     std::cout << "[NetHex] Engine initializing Phase 2 (Stateful DPI)..." << std::endl;
     
-    // Instantiate our reader
+    // Instantiate our reader, flow tracker and dpi engine
     std::unique_ptr<NetHex::IPacketReader> reader = std::make_unique<NetHex::PcapFileReader>("sample.pcap");
-    
-    // Instantiate our new Phase 2 Brain!
-    NetHex::ConnectionTracker tracker; 
+    NetHex::ConnectionTracker tracker;
+    NetHex::DpiEngine dpi;
 
     if (reader->open()) {
         const uint8_t* packet_data = nullptr;
@@ -53,22 +53,27 @@ int main() {
                             // 3. Parse Layer 4 (TCP)
                             if (NetHex::PacketParser::parse_tcp(packet_data, packet_length, offset, src_port, dest_port, tcp_flags)) {
                                 
-                                // --- THE PHASE 2 MAGIC HAPPENS HERE ---
-                                
                                 // A. Create our Bidirectional Fingerprint
                                 NetHex::FiveTuple tuple = NetHex::create_bidirectional_tuple(
                                     src_ip, dest_ip, src_port, dest_port, l4_protocol
                                 );
                                 
-                                // B. Calculate actual L7 payload size (e.g. HTTP/TLS data)
-                                // We just subtract the current offset (L2+L3+L4 headers) from total length!
+                                // B. Calculate actual L7 payload size and pointer (e.g. HTTP/TLS data)
                                 uint32_t payload_size = 0;
+                                const uint8_t* payload_ptr = nullptr;
+                                
                                 if (packet_length > offset) {
-                                    payload_size = packet_length - offset;
+                                    payload_size = packet_length - offset; // We just subtract the current offset (L2+L3+L4 headers) from total length!
+                                    payload_ptr = packet_data + offset; // Shift the pointer forward by the size of the headers
                                 }
 
-                                // C. Feed the Brain!
+                                // C. Feed the Flow tracker!
                                 tracker.process_tcp_packet(tuple, tcp_flags, payload_size);
+
+                                // D. Feed the DPI Engine! (Only if there is actual data)
+                                if (payload_size > 0) {
+                                    dpi.inspect_payload(payload_ptr, payload_size, tuple);
+                                }
                             }
                         }
                     }
