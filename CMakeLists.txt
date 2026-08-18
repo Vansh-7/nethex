@@ -30,6 +30,7 @@ add_library(nethex_core STATIC
     src/dpi_engine.cpp
     src/sni_extractor.cpp
     src/pattern_matcher.cpp
+    src/rule_manager.cpp
 ) 
 
 # Specify where the headers live

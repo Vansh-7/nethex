@@ -1,5 +1,6 @@
 #include "dpi_engine.h"
 #include "sni_extractor.h"
+#include "rule_manager.h"
 
 namespace NetHex {
 
@@ -7,15 +8,14 @@ namespace NetHex {
     DpiEngine::DpiEngine() {
         std::cout << "[DPI] Initializing Aho-Corasick Threat Scanner..." << std::endl;
         
-        // Load some classic malicious signatures
-        scanner.add_pattern("etc/passwd");     // Linux Directory Traversal
-        scanner.add_pattern("cmd.exe");        // Windows Command Injection
-        scanner.add_pattern("UNION SELECT");   // SQL Injection
-        scanner.add_pattern("password=");      // Plaintext credential sniffing
+        // Load signatures dynamically from the file!
+        if (!RuleManager::load_rules("threats.rules", scanner)) {
+            std::cerr << "[DPI] WARNING: No external rules loaded. Engine is running blind!" << std::endl;
+        }
         
-        // Compile the Failure Links!
+        // Compile the Failure Links AFTER all rules are loaded
         scanner.build_machine();
-        std::cout << "[DPI] Threat Scanner Online. Signatures loaded." << std::endl;
+        std::cout << "[DPI] Threat Scanner Online. State machine compiled." << std::endl;
     }
 
     void DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple) {

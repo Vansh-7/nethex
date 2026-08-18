@@ -1,0 +1,24 @@
+# ============================================================================
+# NetHex DPI - Dynamic Threat Signatures
+# ============================================================================
+# Format: alert tcp any any -> any any (msg:"..."; content:"..."; sid:X;)
+#
+# alert tcp any any -> any 80 (msg:"Cmd Injection Attempt"; content:"cmd.exe"; sid:10001;)
+# --- RULE SYNTAX REFERENCE ---
+# The Header (The Routing): alert tcp any any -> any 80
+#   Action: alert (Log it), drop (Block it).
+#   Protocol: tcp, udp, icmp.
+#   Source: any IP, any Port.
+#   Direction: -> (Traffic flowing to the destination).
+#   Destination: any IP, Port 80.
+#
+# The Options (The Payload): (msg:"Cmd Injection Attempt"; content:"cmd.exe"; sid:10001;)
+#   msg: The human-readable alert text.
+#   content: The exact string/hex pattern the Aho-Corasick engine searches for.
+#   sid: Signature ID (unique identifier).
+# -----------------------------
+
+alert tcp any any -> any 80 (msg:"Linux Directory Traversal Attempt"; content:"etc/passwd"; sid:10001;)
+alert tcp any any -> any 80 (msg:"Windows Command Injection Attempt"; content:"cmd.exe"; sid:10002;)
+alert tcp any any -> any 80 (msg:"SQL Injection Union Attack"; content:"UNION SELECT"; sid:10003;)
+alert tcp any any -> any 80 (msg:"Plaintext Credential Leak"; content:"password="; sid:10004;)
