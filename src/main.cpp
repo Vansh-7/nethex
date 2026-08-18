@@ -7,7 +7,7 @@
 #include <iostream>
 
 int main() {
-    std::cout << "[NetHex] Engine initializing Phase 2 (Stateful DPI)..." << std::endl;
+    std::cout << "[NetHex] Engine initializing..." << std::endl;
     
     // Instantiate our reader, flow tracker and dpi engine
     std::unique_ptr<NetHex::IPacketReader> reader = std::make_unique<NetHex::PcapFileReader>("sample.pcap");

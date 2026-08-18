@@ -29,6 +29,7 @@ add_library(nethex_core STATIC
     src/connection_tracker.cpp
     src/dpi_engine.cpp
     src/sni_extractor.cpp
+    src/pattern_matcher.cpp
 ) 
 
 # Specify where the headers live

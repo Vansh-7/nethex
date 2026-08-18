@@ -1,6 +1,7 @@
 #pragma once
 
 #include "five_tuple.h"
+#include "pattern_matcher.h"
 #include <cstdint>
 #include <iostream>
 #include <iomanip>
@@ -10,7 +11,7 @@ namespace NetHex {
 
     class DpiEngine {
         public:
-            DpiEngine() = default;
+            DpiEngine();
             ~DpiEngine() = default;
 
             // Core inspection entry point
@@ -23,5 +24,8 @@ namespace NetHex {
 
             // unencrypted HTTP Payload Extractor
             void parse_http(const uint8_t* payload, uint32_t payload_length);
+
+            // Our high-speed scanner
+            PatternMatcher scanner;
     };
 }

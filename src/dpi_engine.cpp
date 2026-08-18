@@ -3,31 +3,55 @@
 
 namespace NetHex {
 
-    void DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple){
-        // 1. Safety Check: TCP packets often have 0 payload (e.g., pure ACK or SYN packets)
-        if (payload_length == 0 || payload == nullptr) return; 
+    // Initialize the Engine and Load Signatures
+    DpiEngine::DpiEngine() {
+        std::cout << "[DPI] Initializing Aho-Corasick Threat Scanner..." << std::endl;
+        
+        // Load some classic malicious signatures
+        scanner.add_pattern("etc/passwd");     // Linux Directory Traversal
+        scanner.add_pattern("cmd.exe");        // Windows Command Injection
+        scanner.add_pattern("UNION SELECT");   // SQL Injection
+        scanner.add_pattern("password=");      // Plaintext credential sniffing
+        
+        // Compile the Failure Links!
+        scanner.build_machine();
+        std::cout << "[DPI] Threat Scanner Online. Signatures loaded." << std::endl;
+    }
+
+    void DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple) {
+        (void)tuple;
+        // Safety Check: TCP packets often have 0 payload (e.g., pure ACK or SYN packets)
+        if (payload_length < 5 || payload == nullptr) return;
+
+        // Zero-copy window into the payload for protocol identification
+        std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
 
         // Traffic Routing: Send payload to correct L7 Decoder
-        if(tuple.dest_port == 80) {
+        // 1. Is this HTTP? (Starts with GET, POST, or HTTP)
+        if (data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
             parse_http(payload, payload_length);
         } 
-        else if (tuple.dest_port == 443 || tuple.src_port == 443) {
-            // Check if traffic is heading TO or coming FROM a secure web server
-            // Route HTTPS traffic through our SNI Extractor
+        // 2. Is this TLS? (Byte 0 is 0x16 for Handshake, Byte 5 is 0x01 for Client Hello)
+        else if (payload[0] == 0x16 && payload[5] == 0x01) {
             std::string sni_domain = SniExtractor::extract_sni(payload, payload_length);
             if (!sni_domain.empty()) {
                 std::cout << "\n[DPI] --- TLS Connection Detected ---" << std::endl;
                 std::cout << "    [Extracted SNI] " << sni_domain << std::endl;
             }
         } 
+        // 3. Unknown Protocol
         else {
-            // For unknown application traffic, safely dump the raw hex
-            std::cout << "\n[DPI] Unknown L7 Protocol. Dumping raw bytes:" << std::endl;
-            print_hex_dump(payload, payload_length);
+            // std::cout << "\n[DPI] Unknown L7 Protocol. Dumping raw bytes:" << std::endl;
+            // print_hex_dump(payload, payload_length);
         }
     }
 
     void DpiEngine::parse_http(const uint8_t* payload, uint32_t payload_length) {
+        // ---- ADD THIS DEBUG BLOCK ----
+        std::cout << "\n[DEBUG] Port 80 Payload Received. Size: " << payload_length << " bytes" << std::endl;
+        print_hex_dump(payload, payload_length);
+        // ------------------------------
+
         // ZERO-COPY MAGIC: string_view
         // It provides string manipulation functions (like .find) without copying the data!
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
@@ -58,6 +82,14 @@ namespace NetHex {
                 std::string_view ua = data.substr(ua_pos + 12, end_pos - (ua_pos + 12));
                 std::cout << "    [Extracted User-Agent] " << ua << std::endl;
             }
+        }
+
+        // TRIGGER THE MALWARE SCANNER!
+        // We pass the raw payload pointer directly into our O(N) state machine
+        std::vector<std::string> alerts = scanner.search(payload, payload_length);
+        
+        for (const auto& alert : alerts) {
+            std::cout << "    [!!! THREAT ALERT !!!] Signature Match: " << alert << std::endl;
         }
     }
 
