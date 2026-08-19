@@ -33,7 +33,7 @@ public:
 
     // Called ONLY by the single Ingestion Thread for EVERY packet
     bool dispatch(const ParsedPacket& packet, uint64_t flow_hash) {
-        // THE MAGIC TRICK: Flow-Aware Routing
+        // Flow-Aware Routing:
         // Modulo arithmetic ensures the same flow hash ALWAYS goes to the same worker ID.
         size_t worker_id = flow_hash % num_workers_;
         
