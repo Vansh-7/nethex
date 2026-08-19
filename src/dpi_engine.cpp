@@ -47,11 +47,6 @@ namespace NetHex {
     }
 
     void DpiEngine::parse_http(const uint8_t* payload, uint32_t payload_length) {
-        // ---- ADD THIS DEBUG BLOCK ----
-        std::cout << "\n[DEBUG] Port 80 Payload Received. Size: " << payload_length << " bytes" << std::endl;
-        print_hex_dump(payload, payload_length);
-        // ------------------------------
-
         // ZERO-COPY MAGIC: string_view
         // It provides string manipulation functions (like .find) without copying the data!
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);

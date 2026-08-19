@@ -43,7 +43,7 @@ public:
         // but it's safe. Relaxed is faster and standard for SPSC queues.
         const size_t current_tail = tail_.load(std::memory_order_acquire);
         
-        // If the queue is full (head has lapped the tail)
+        // If the queue is full
         if (current_head - current_tail == capacity_) {
             return false; 
         }
