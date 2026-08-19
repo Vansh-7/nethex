@@ -1,5 +1,7 @@
 #pragma once
+
 #include <cstdint>
+#include <vector>
 
 namespace NetHex {
 
@@ -70,4 +72,32 @@ namespace NetHex {
     // Restore the default compiler packing behavior so we don't mess up 
     // the rest of our standard C++ code.
     #pragma pack(pop)
+
+    // ------------------------------------------------------------------------
+    // INTER-THREAD COMMUNICATION WAPPERS
+    // ------------------------------------------------------------------------
+    // This is the "Envelope" passed across the Lock-Free Queue
+    struct ParsedPacket {
+        // The 5-Tuple (Crucial for routing and connection tracking)
+        uint32_t src_ip{0};
+        uint32_t dest_ip{0};
+        uint16_t src_port{0};
+        uint16_t dest_port{0};
+        uint8_t  protocol{0}; // e.g., 6 for TCP, 17 for UDP
+
+        // The Application Layer (L7) Data
+        // We use a vector here so the Consumer thread owns the memory safely.
+        std::vector<uint8_t> payload;
+
+        // Keep track of packet timing
+        uint32_t ts_sec{0};
+        uint32_t ts_usec{0};
+        
+        // Default constructor
+        ParsedPacket() = default;
+
+        // Helper constructor for fast creation in the ingestion thread
+        ParsedPacket(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport, uint8_t proto)
+            : src_ip(sip), dest_ip(dip), src_port(sport), dest_port(dport), protocol(proto) {}
+    };
 }
