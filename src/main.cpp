@@ -13,6 +13,7 @@
 #include "xxhash_functor.h"
 #include "connection_tracker.h"
 #include "dpi_engine.h"
+#include "fast_path.h"
 
 using namespace NetHex;
 
@@ -44,13 +45,31 @@ void worker_node(int core_id, LoadBalancer* lb) {
     // 3. The High-Speed Polling Loop
     while (keep_running) {
         if (my_queue->pop(packet)) {
-            // We successfully popped a packet! 
-            // you wire the payload into your engines here:
-            tracker.process_packet(packet);
-            if (!packet.payload.empty()) {
-                dpi_engine.inspect(packet.payload);
-            }
+
+            // Reconstruct the 5-tuple for the tracker
+            FiveTuple tuple{packet.src_ip, packet.dest_ip, packet.src_port, packet.dest_port, packet.protocol};
+
+            // Step 1: Update TCP State and retrieve the connection pointer
+            Connection* conn = tracker.process_tcp_packet(tuple, packet.tcp_flags, packet.payload.size());
             
+            // Safety check: if the tracker rejected the packet (e.g. out-of-state)
+            if (conn == nullptr) {
+                continue; 
+            }
+
+            // 2. THE FAST-PATH GUARD
+            if (FastPath::should_bypass(*conn)) {
+                // Connection is trusted. Skip DPI completely! Save massive CPU cycles.
+                continue; 
+            }
+
+            // 3. Only run heavy inspection if it hasn't been bypassed
+            if (!packet.payload.empty()) {
+                dpi_engine.inspect_payload(packet.payload.data(), packet.payload.size(), tuple);
+                // if (dpi_engine.inspect_payload(packet.payload.data(), packet.payload.size(), tuple)) {
+                //     conn->is_malicious = true; // Mark as bad!
+                // }
+            }
         } else {
             // If the queue is empty, yield the CPU slightly so we don't burn 
             // 100% of the core doing a busy-wait loop.
@@ -98,7 +117,7 @@ int main(int argc, char* argv[]) {
     // The Ingestion Loop Variables
     const uint8_t* raw_packet = nullptr;
     uint32_t packet_len = 0;
-    XXHashFunctor hash_fn;
+    XxHashFunctor hash_fn;
 
     std::cout << "[Ingestion] Reading packets and distributing to workers...\n";
 
@@ -145,6 +164,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << "[Ingestion] Finished reading PCAP. Waiting for workers to drain queues...\n";
     
+    // Give workers 1 second to empty their queues before sending the kill signal
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
     // Stop the worker while-loops
     keep_running = false; 
 
