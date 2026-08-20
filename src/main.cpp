@@ -174,14 +174,17 @@ int main(int argc, char* argv[]) {
                                 std::this_thread::yield();
                             }
 
-                            // Copy payload exactly ONCE into the pre-allocated pool buffer
-                            uint32_t copy_size = (p_len > 2048) ? 2048 : p_len; 
-                            std::memcpy(buffer_ptr, raw_packet + offset, copy_size);
+                            // Only proceed if we actually acquired a slot (i.e., we aren't shutting down)
+                            if (keep_running) {
+                                // Copy payload exactly ONCE into the pre-allocated pool buffer
+                                uint32_t copy_size = (p_len > 2048) ? 2048 : p_len; 
+                                std::memcpy(buffer_ptr, raw_packet + offset, copy_size);
 
-                            // Point the lock-free envelope to the pool
-                            parsed.pool_slot_id = slot_id;
-                            parsed.payload_ptr = buffer_ptr;
-                            parsed.payload_length = copy_size;
+                                // Point the lock-free envelope to the pool
+                                parsed.pool_slot_id = slot_id;
+                                parsed.payload_ptr = buffer_ptr;
+                                parsed.payload_length = copy_size;
+                            }
                         }
 
                         // Hash the 5-Tuple to guarantee Flow-Aware Routing (bi-directional)
