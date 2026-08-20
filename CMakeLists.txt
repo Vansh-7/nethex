@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# ------------------------------------------------------------------------
+# DEPENDENCIES
+# ------------------------------------------------------------------------
+
 # find necessary dependencies (PCAP header and library)
 find_path(PCAP_INCLUDE_DIR pcap.h)
 find_library(PCAP_LIBRARY pcap)
@@ -21,6 +25,13 @@ find_library(XXHASH_LIBRARY xxhash)
 if(NOT XXHASH_INCLUDE_DIR OR NOT XXHASH_LIBRARY)
     message(FATAL_ERROR "xxHash library not found! Please install libxxhash-dev.")
 endif()
+
+# Find native OS Threading Library
+find_package(Threads REQUIRED)
+
+# ------------------------------------------------------------------------
+# CORE LIBRARY (nethex_core)
+# ------------------------------------------------------------------------
 
 # static lib for core engine
 add_library(nethex_core STATIC 
@@ -47,11 +58,17 @@ endif()
 target_link_libraries(nethex_core PUBLIC ${PCAP_LIBRARY} ${XXHASH_LIBRARY})
 target_include_directories(nethex_core PUBLIC ${PCAP_INCLUDE_DIRS})
 
+# ------------------------------------------------------------------------
+# MAIN EXECUTABLE (nethex)
+# ------------------------------------------------------------------------
+
+# main executable
+add_executable(nethex src/main.cpp)
+
+# Link the core library AND the newly found Threading library
+target_link_libraries(nethex PRIVATE nethex_core Threads::Threads)
+
 # Link the Windows Socket library if compiling on Windows
 if(WIN32)
-    target_link_libraries(nethex ws2_32)
+    target_link_libraries(nethex PRIVATE ws2_32)
 endif()
-
-# main executable and link the core library
-add_executable(nethex src/main.cpp)
-target_link_libraries(nethex PRIVATE nethex_core)
