@@ -68,7 +68,9 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
             // Only run heavy inspection if it hasn't been bypassed
             if (!should_bypass && packet.payload_length > 0 && packet.payload_ptr != nullptr) {
                 if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple)) {
-                    conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
+                    if (conn != nullptr) {
+                        conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
+                    }
                 }
             }
 
@@ -170,6 +172,8 @@ int main(int argc, char* argv[]) {
                             parsed.tcp_flags = tcp_flags;
                         } else if (next_proto_l3 == 17) { 
                             PacketParser::parse_udp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port);
+                        } else {
+                            continue; // Drop ICMP or other unsupported L4 protocols to save memory pool slots
                         }
 
                         // Copy the Layer 7 Payload safely into the envelope for cross-thread transit
