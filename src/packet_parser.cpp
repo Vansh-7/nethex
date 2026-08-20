@@ -21,6 +21,16 @@ namespace NetHex {
         // Advance the offset by exactly the size of the Ethernet II header (14 bytes)
         offset += sizeof(EthernetHeader);
 
+        while (next_protocol == 0x8100 || next_protocol == 0x88A8) { // 802.1Q VLAN Tag Detected!
+            if (packet_length < offset + 4) return false;
+            
+            // The REAL EtherType is 2 bytes after the current offset
+            const uint16_t* real_ethertype = reinterpret_cast<const uint16_t*>(packet_data + offset + 2);
+            next_protocol = ntoh16(*real_ethertype);
+            
+            offset += 4; // Skip the VLAN tag
+        }
+
         return true;
     }
 
