@@ -62,13 +62,13 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
             }
             
             // Safety check: if the tracker rejected the packet (e.g. out-of-state)
-            if (conn != nullptr && !FastPath::should_bypass(*conn)) {
+            // Only bypass if we have a tracked state AND the fast path says to bypass
+            bool should_bypass = (conn != nullptr) && FastPath::should_bypass(*conn);
 
-                // Only run heavy inspection if it hasn't been bypassed
-                if (packet.payload_length > 0 && packet.payload_ptr != nullptr) {
-                    if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple)) {
-                        conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
-                    }
+            // Only run heavy inspection if it hasn't been bypassed
+            if (!should_bypass && packet.payload_length > 0 && packet.payload_ptr != nullptr) {
+                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple)) {
+                    conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
                 }
             }
 
@@ -118,6 +118,10 @@ int main(int argc, char* argv[]) {
 
     // Wrap initialization and execution in a try-catch block for absolute safety
     try {
+        // Pin the Main Ingestion Thread to the last available core to prevent preemption of worker threads
+        NetHex::pin_thread_to_core(num_cores - 1);
+        spdlog::info("[Main] Ingestion Thread pinned to CPU Core {}", num_cores - 1);
+
         // Initialize the Load Balancer with 8192 capacity per queue
         LoadBalancer load_balancer(num_workers, 8192);
 
