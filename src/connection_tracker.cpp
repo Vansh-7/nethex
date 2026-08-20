@@ -103,9 +103,9 @@ namespace NetHex {
             bool should_evict = false;
 
             // --- THE EVICTION RULES ---
-            if (conn.state == TcpState::CLOSED) {
-                should_evict = true; // 1. It closed properly. Drop it instantly.
-            } 
+            if (conn.state == TcpState::CLOSED && duration_seconds > 5) {
+                should_evict = true; // 1. It closed properly. Give a 5-second grace period for the 4-way teardown.
+            }
             else if (conn.state == TcpState::SYN_SENT && duration_seconds > 10) {
                 should_evict = true; // 2. SYN Flood Protection! No reply after 10 seconds? Kill it.
             } 
