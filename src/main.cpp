@@ -53,8 +53,13 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
             // Reconstruct the bi-direction 5-tuple for the tracker
             FiveTuple tuple = create_bidirectional_tuple(packet.src_ip, packet.dest_ip, packet.src_port, packet.dest_port, packet.protocol);
 
-            // Update TCP State and retrieve the connection pointer
-            Connection* conn = tracker.process_tcp_packet(tuple, packet.tcp_flags, packet.payload_length);
+            Connection* conn = nullptr;
+            if (packet.protocol == 6) { // TCP
+                conn = tracker.process_tcp_packet(tuple, packet.tcp_flags, packet.payload_length);
+            } else if (packet.protocol == 17) { // UDP
+                // Optionally implement tracker.process_udp_packet() in the future.
+                // For now, we skip UDP connection tracking.
+            }
             
             // Safety check: if the tracker rejected the packet (e.g. out-of-state)
             if (conn != nullptr && !FastPath::should_bypass(*conn)) {
@@ -72,7 +77,7 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
                 mem_pool->release_slot(packet.pool_slot_id);
             }
 
-            // garage collector trigger!
+            // garbage collector trigger!
             gc_counter++;
             if (gc_counter >= 10000) {
                 tracker.evict_stale_sessions();
@@ -188,7 +193,7 @@ int main(int argc, char* argv[]) {
                         }
 
                         // Hash the 5-Tuple to guarantee Flow-Aware Routing (bi-directional)
-                        FiveTuple tuple = create_bidirectional_tuple(packet.src_ip, packet.dest_ip, packet.src_port, packet.dest_port, packet.protocol);
+                        FiveTuple tuple = create_bidirectional_tuple(parsed.src_ip, parsed.dest_ip, parsed.src_port, parsed.dest_port, parsed.protocol);
                         uint64_t flow_hash = hash_fn(tuple);
 
                         // Dispatch to the Lock-Free Queue!
