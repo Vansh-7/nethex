@@ -29,12 +29,17 @@ namespace NetHex {
         std::chrono::steady_clock::time_point first_seen;
         std::chrono::steady_clock::time_point last_seen;
 
-        // A quick helper to initialize a brand new connection safely
+        // A helper to initialize a brand new connection safely
         Connection(): 
             state(TcpState::UNKNOWN), 
             total_bytes(0), 
             total_packets(0),
             first_seen(std::chrono::steady_clock::now()),
             last_seen(first_seen) {}
+
+        // FAST-PATH Variables
+        uint32_t packet_count{0};    // How many packets we've seen in this flow
+        bool is_bypassed{false};     // True if we decided to stop inspecting it
+        bool is_malicious{false};    // True if we caught malware
     };
 }

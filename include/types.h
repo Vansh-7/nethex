@@ -84,6 +84,7 @@ namespace NetHex {
         uint16_t src_port{0};
         uint16_t dest_port{0};
         uint8_t  protocol{0}; // e.g., 6 for TCP, 17 for UDP
+        uint8_t  tcp_flags{0};
 
         // The Application Layer (L7) Data
         // We use a vector here so the Consumer thread owns the memory safely.
