@@ -1,96 +1,160 @@
+#include <iostream>
+#include <vector>
+#include <thread>
+#include <atomic>
+#include <csignal>
+#include <cstring>
+
+// custom headers
 #include "platform.h"
 #include "pcap_reader.h"
 #include "packet_parser.h"
+#include "load_balancer.h"
+#include "xxhash_functor.h"
 #include "connection_tracker.h"
-#include "five_tuple.h"
 #include "dpi_engine.h"
-#include <iostream>
 
-int main() {
-    std::cout << "[NetHex] Engine initializing..." << std::endl;
+using namespace NetHex;
+
+// Global atomic flag for clean shutdown via CTRL+C
+std::atomic<bool> keep_running{true};
+
+void signal_handler(int) {
+    keep_running = false;
+}
+
+// ------------------------------------------------------------------------
+// THE WORKER THREAD (CONSUMER)
+// ------------------------------------------------------------------------
+void worker_node(int core_id, LoadBalancer* lb) {
+    // 1. Cross-Platform CPU Pinning
+    NetHex::pin_thread_to_core(core_id);
+
+    std::cout << "[Worker " << core_id << "] Online and pinned to CPU Core " << core_id << "\n";
+
+    // 2. Private State! (No Mutexes Needed)
+    // Every worker has its own dedicated memory for tracking flows and patterns.
+    ConnectionTracker tracker;
+    DpiEngine dpi_engine;
     
-    // Instantiate our reader, flow tracker and dpi engine
-    std::unique_ptr<NetHex::IPacketReader> reader = std::make_unique<NetHex::PcapFileReader>("sample.pcap");
-    NetHex::ConnectionTracker tracker;
-    NetHex::DpiEngine dpi;
+    // Grab the specific lock-free queue for this worker
+    auto* my_queue = lb->get_queue(core_id);
+    ParsedPacket packet;
 
-    if (reader->open()) {
-        const uint8_t* packet_data = nullptr;
-        uint32_t packet_length = 0;
-        uint32_t packet_count = 0;
-
-        // THE CORE INGESTION LOOP
-        // The loop just asks for the next packet.
-        while (reader->read_next_packet(packet_data, packet_length)) {
-            packet_count++;
-            
-            // Run the Garbage Collector every 1000 packets
-            if (packet_count % 1000 == 0) {
-                tracker.evict_stale_sessions();
+    // 3. The High-Speed Polling Loop
+    while (keep_running) {
+        if (my_queue->pop(packet)) {
+            // We successfully popped a packet! 
+            // you wire the payload into your engines here:
+            tracker.process_packet(packet);
+            if (!packet.payload.empty()) {
+                dpi_engine.inspect(packet.payload);
             }
-
-            // Initialize the offset for this specific packet
-            uint32_t offset = 0;
-            uint16_t next_protocol = 0;
             
-            // 1. Parse Layer 2 (Ethernet). This will automatically advance the 'offset' by 14
-            if (NetHex::PacketParser::parse_ethernet(packet_data, packet_length, offset, next_protocol)) {
+        } else {
+            // If the queue is empty, yield the CPU slightly so we don't burn 
+            // 100% of the core doing a busy-wait loop.
+            std::this_thread::yield(); 
+        }
+    }
+    
+    std::cout << "[Worker " << core_id << "] Shutting down.\n";
+}
+
+// ------------------------------------------------------------------------
+// THE MAIN THREAD (PRODUCER / INGESTION)
+// ------------------------------------------------------------------------
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <pcap_file>\n";
+        return 1;
+    }
+
+    std::signal(SIGINT, signal_handler);
+
+    // Determine hardware concurrency (how many cores the system actually has)
+    // We leave 1 core dedicated to this Main Ingestion Thread.
+    unsigned int num_cores = std::thread::hardware_concurrency();
+    size_t num_workers = (num_cores > 1) ? num_cores - 1 : 1;
+    
+    std::cout << "[System] Starting NetHex DPI Engine with " << num_workers << " Worker Threads.\n";
+
+    // Initialize the Load Balancer with 8192 capacity per queue
+    LoadBalancer load_balancer(num_workers, 8192);
+
+    // Spin up the worker threads
+    std::vector<std::thread> workers;
+    for (size_t i = 0; i < num_workers; ++i) {
+        workers.emplace_back(worker_node, i, &load_balancer);
+    }
+
+    // Open the target PCAP File
+    PcapFileReader reader(argv[1]);
+    if (!reader.open()) {
+        std::cerr << "[Error] Failed to open PCAP file.\n";
+        keep_running = false;
+    }
+
+    // The Ingestion Loop Variables
+    const uint8_t* raw_packet = nullptr;
+    uint32_t packet_len = 0;
+    XXHashFunctor hash_fn;
+
+    std::cout << "[Ingestion] Reading packets and distributing to workers...\n";
+
+    // The loop just asks for the next packet.
+    while (keep_running && reader.read_next_packet(raw_packet, packet_len)) {
+        uint32_t offset = 0;
+        uint16_t next_proto_l2;
+        uint8_t next_proto_l3, tcp_flags;
+        uint32_t src_ip, dest_ip;
+
+        // Parse Layer 2 (Ethernet): adv 'offset' by 14 && EtherType 0x0800 means IPv4
+        if (PacketParser::parse_ethernet(raw_packet, packet_len, offset, next_proto_l2) && next_proto_l2 == 0x0800) {
+            
+            // Parse Layer 3 (IPv4)
+            if (PacketParser::parse_ipv4(raw_packet, packet_len, offset, src_ip, dest_ip, next_proto_l3)) {
                 
-                // EtherType 0x0800 means IPv4
-                if (next_protocol == 0x0800) {
-                    
-                    uint32_t src_ip = 0, dest_ip = 0;
-                    uint8_t l4_protocol = 0;
-                    
-                    // 2. Parse Layer 3 (IPv4)
-                    if (NetHex::PacketParser::parse_ipv4(packet_data, packet_length, offset, src_ip, dest_ip, l4_protocol)) {
-                        
-                        // IANA Protocol Number 6 exactly means TCP
-                        if (l4_protocol == 6) {
-                            uint16_t src_port = 0, dest_port = 0;
-                            uint8_t tcp_flags = 0;
-                            
-                            // 3. Parse Layer 4 (TCP)
-                            if (NetHex::PacketParser::parse_tcp(packet_data, packet_length, offset, src_port, dest_port, tcp_flags)) {
-                                
-                                // A. Create our Bidirectional Fingerprint
-                                NetHex::FiveTuple tuple = NetHex::create_bidirectional_tuple(
-                                    src_ip, dest_ip, src_port, dest_port, l4_protocol
-                                );
-                                
-                                // B. Calculate actual L7 payload size and pointer (e.g. HTTP/TLS data)
-                                uint32_t payload_size = 0;
-                                const uint8_t* payload_ptr = nullptr;
-                                
-                                if (packet_length > offset) {
-                                    payload_size = packet_length - offset; // We just subtract the current offset (L2+L3+L4 headers) from total length!
-                                    payload_ptr = packet_data + offset; // Shift the pointer forward by the size of the headers
-                                }
+                // Create our safe envelope (Zero-initialized by default)
+                ParsedPacket parsed(src_ip, dest_ip, 0, 0, next_proto_l3);
 
-                                // C. Feed the Flow tracker!
-                                tracker.process_tcp_packet(tuple, tcp_flags, payload_size);
+                // Parse Layer 4 (TCP / UDP)
+                if (next_proto_l3 == 6) { 
+                    PacketParser::parse_tcp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port, tcp_flags);
+                } else if (next_proto_l3 == 17) { 
+                    PacketParser::parse_udp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port);
+                }
 
-                                // D. Feed the DPI Engine! (Only if there is actual data)
-                                if (payload_size > 0) {
-                                    dpi.inspect_payload(payload_ptr, payload_size, tuple);
-                                }
-                            }
-                        }
-                    }
+                // Copy the Layer 7 Payload safely into the envelope for cross-thread transit
+                if (packet_len > offset) {
+                    parsed.payload.assign(raw_packet + offset, raw_packet + packet_len);
+                }
+
+                // Hash the 5-Tuple to guarantee Flow-Aware Routing
+                FiveTuple tuple{parsed.src_ip, parsed.dest_ip, parsed.src_port, parsed.dest_port, parsed.protocol};
+                uint64_t flow_hash = hash_fn(tuple);
+
+                // Dispatch to the Lock-Free Queue!
+                // If the queue is full (returns false), we yield and retry until space opens up.
+                while (!load_balancer.dispatch(parsed, flow_hash) && keep_running) {
+                    std::this_thread::yield(); 
                 }
             }
         }
-
-        std::cout << "\n[NetHex] Successfully ingested " << packet_count << " packets." << std::endl;
-        
-        // Final cleanup before shutting down!
-        tracker.evict_stale_sessions();
-
-        std::cout << "[NetHex] Total Active Flows Remaining: " << tracker.get_active_flow_count() << std::endl;
-        reader->close();
-    } else {
-        std::cout << "[NetHex] Note: Please drop a 'sample.pcap' file into your working directory to test ingestion." << std::endl;
     }
+
+    std::cout << "[Ingestion] Finished reading PCAP. Waiting for workers to drain queues...\n";
     
+    // Stop the worker while-loops
+    keep_running = false; 
+
+    // Safely join all threads before exiting
+    for (auto& t : workers) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    std::cout << "[System] Engine shutdown complete.\n";
     return 0;
 }
