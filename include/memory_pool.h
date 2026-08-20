@@ -17,10 +17,14 @@ namespace NetHex {
 
         size_t max_payload_size;
 
+        // O(1) Boolean tracking to prevent Double-Frees
+        std::vector<bool> is_free;
+
     public:
         PacketMemoryPool(size_t capacity, size_t payload_size = 2048) 
-            : pool(capacity, std::vector<uint8_t>(payload_size)), 
-              max_payload_size(payload_size) {
+        : pool(capacity, std::vector<uint8_t>(payload_size)), 
+          is_free(capacity, true),
+          max_payload_size(payload_size) {
             
             // At startup, every slot is free! Push all IDs into the queue.
             for (uint32_t i = 0; i < capacity; ++i) {
@@ -35,6 +39,7 @@ namespace NetHex {
             if (!free_slots.empty()) {
                 out_slot_id = free_slots.front();
                 free_slots.pop();
+                is_free[out_slot_id] = false; // Mark as used
                 out_buffer_ptr = pool[out_slot_id].data();
                 return true;
             }
@@ -44,7 +49,12 @@ namespace NetHex {
         // Multiple Worker Threads call this to return memory concurrently
         void release_slot(uint32_t slot_id) {
             std::lock_guard<std::mutex> lock(pool_mutex);
-            free_slots.push(slot_id);
+            
+            // Only release if it isn't already free!
+            if (!is_free[slot_id]) {
+                free_slots.push(slot_id);
+                is_free[slot_id] = true;
+            }
         }
     };
 }
