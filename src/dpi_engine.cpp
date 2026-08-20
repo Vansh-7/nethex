@@ -23,8 +23,9 @@ namespace NetHex {
 
     bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple) {
         (void)tuple;
-        // Safety Check: TCP packets often have 0 payload (e.g., pure ACK or SYN packets)
-        if (payload_length < 5 || payload == nullptr) return false;
+        // Safety Check: TCP packets often have 0 payload. We need at least 6 bytes 
+        // to safely check HTTP methods or the TLS Client Hello signature.
+        if (payload_length < 6 || payload == nullptr) return false;
 
         // Zero-copy window into the payload for protocol identification
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
