@@ -87,18 +87,19 @@ namespace NetHex {
         uint8_t  tcp_flags{0};
 
         // The Application Layer (L7) Data
-        // We use a vector here so the Consumer thread owns the memory safely.
-        std::vector<uint8_t> payload;
+        // ZERO-COPY
+        uint32_t pool_slot_id; 
+        const uint8_t* payload_ptr;
+        uint32_t payload_length;
 
-        // Keep track of packet timing
-        uint32_t ts_sec{0};
-        uint32_t ts_usec{0};
-        
-        // Default constructor
-        ParsedPacket() = default;
+        // Constructors default the slot ID to 0xFFFFFFFF (meaning "No Payload")
+        ParsedPacket() : src_ip(0), dest_ip(0), src_port(0), dest_port(0), 
+                         protocol(0), tcp_flags(0), pool_slot_id(0xFFFFFFFF), 
+                         payload_ptr(nullptr), payload_length(0) {}
 
-        // Helper constructor for fast creation in the ingestion thread
         ParsedPacket(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport, uint8_t proto)
-            : src_ip(sip), dest_ip(dip), src_port(sport), dest_port(dport), protocol(proto) {}
+            : src_ip(sip), dest_ip(dip), src_port(sport), dest_port(dport), 
+              protocol(proto), tcp_flags(0), pool_slot_id(0xFFFFFFFF), 
+              payload_ptr(nullptr), payload_length(0) {}
     };
 }

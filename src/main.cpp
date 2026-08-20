@@ -14,6 +14,7 @@
 #include "connection_tracker.h"
 #include "dpi_engine.h"
 #include "fast_path.h"
+#include "memory_pool.h"
 #include "logger.h"
 #include <spdlog/spdlog.h> // Async logging!
 
@@ -29,7 +30,7 @@ void signal_handler(int) {
 // ------------------------------------------------------------------------
 // THE WORKER THREAD (CONSUMER)
 // ------------------------------------------------------------------------
-void worker_node(int core_id, LoadBalancer* lb) {
+void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
     // 1. Cross-Platform CPU Pinning
     NetHex::pin_thread_to_core(core_id);
 
@@ -51,26 +52,25 @@ void worker_node(int core_id, LoadBalancer* lb) {
             // Reconstruct the 5-tuple for the tracker
             FiveTuple tuple{packet.src_ip, packet.dest_ip, packet.src_port, packet.dest_port, packet.protocol};
 
-            // 1. Update TCP State and retrieve the connection pointer
+            // Update TCP State and retrieve the connection pointer
             Connection* conn = tracker.process_tcp_packet(tuple, packet.tcp_flags, packet.payload.size());
             
             // Safety check: if the tracker rejected the packet (e.g. out-of-state)
-            if (conn == nullptr) {
-                continue; 
-            }
+            if (conn != nullptr && !FastPath::should_bypass(*conn)) {
 
-            // 2. THE FAST-PATH GUARD
-            if (FastPath::should_bypass(*conn)) {
-                // Connection is trusted. Skip DPI completely! Save massive CPU cycles.
-                continue; 
-            }
-
-            // 3. Only run heavy inspection if it hasn't been bypassed
-            if (!packet.payload.empty()) {
-                if (dpi_engine.inspect_payload(packet.payload.data(), packet.payload.size(), tuple)) {
-                    conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
+                // Only run heavy inspection if it hasn't been bypassed
+                if (packet.payload_length > 0 && packet.payload_ptr != nullptr) {
+                    if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple)) {
+                        conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
+                    }
                 }
             }
+
+            // ZERO COPY MAGIC: RETURN THE MEMORY TO THE POOL!
+            if (packet.pool_slot_id != 0xFFFFFFFF) {
+                mem_pool->release_slot(packet.pool_slot_id);
+            }
+
         } else {
             // If the queue is empty, yield the CPU slightly so we don't burn 
             // 100% of the core doing a busy-wait loop.
@@ -108,10 +108,14 @@ int main(int argc, char* argv[]) {
         // Initialize the Load Balancer with 8192 capacity per queue
         LoadBalancer load_balancer(num_workers, 8192);
 
+        // INSTANTIATE THE MEMORY POOL
+        // 65,536 slots is standard, capable of holding heavy bursts of traffic
+        PacketMemoryPool mem_pool(65536, 2048);
+
         // Spin up the worker threads
         std::vector<std::thread> workers;
         for (size_t i = 0; i < num_workers; ++i) {
-            workers.emplace_back(worker_node, i, &load_balancer);
+            workers.emplace_back(worker_node, i, &load_balancer, &mem_pool);
         }
 
         // Open the target PCAP File
@@ -152,7 +156,23 @@ int main(int argc, char* argv[]) {
 
                         // Copy the Layer 7 Payload safely into the envelope for cross-thread transit
                         if (packet_len > offset) {
-                            parsed.payload.assign(raw_packet + offset, raw_packet + packet_len);
+                            uint32_t p_len = packet_len - offset;
+                            uint32_t slot_id;
+                            uint8_t* buffer_ptr;
+                            
+                            // Borrow a slot from the pool. Spin-wait if exhausted.
+                            while (!mem_pool.acquire_slot(slot_id, buffer_ptr) && keep_running) {
+                                std::this_thread::yield();
+                            }
+
+                            // Copy payload exactly ONCE into the pre-allocated pool buffer
+                            uint32_t copy_size = (p_len > 2048) ? 2048 : p_len; 
+                            std::memcpy(buffer_ptr, raw_packet + offset, copy_size);
+
+                            // Point the lock-free envelope to the pool
+                            parsed.pool_slot_id = slot_id;
+                            parsed.payload_ptr = buffer_ptr;
+                            parsed.payload_length = copy_size;
                         }
 
                         // Hash the 5-Tuple to guarantee Flow-Aware Routing
