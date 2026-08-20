@@ -1,6 +1,6 @@
 #pragma once
 
-#include <iostream>
+#include <spdlog/spdlog.h> // Async logging
 #include "connection.h"
 
 namespace NetHex {
@@ -28,7 +28,7 @@ namespace NetHex {
             if (conn.packet_count > BYPASS_THRESHOLD) {
                 conn.is_bypassed = true;
                 
-                std::cout << "[Fast-Path] Threshold reached (10 packets). Flow offloaded to Fast-Path!\n";
+                spdlog::info("[Fast-Path] Threshold reached (10 packets). Flow offloaded to Fast-Path!");
                 return true; 
             }
 
