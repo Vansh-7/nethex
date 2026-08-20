@@ -45,6 +45,7 @@ namespace NetHex {
         // Calculate the actual header length using the IHL (Internet Header Length) field.
         // IHL is the lower 4 bits of the version_ihl byte. It represents the length in 32-bit words.
         uint8_t ihl = ip_header->version_ihl & 0x0F;
+        if (ihl < 5) return false; // Drop malformed/evasion packets
         uint32_t actual_header_bytes = ihl * 4;
 
         // Secondary safety check in case of malformed network packets advertising a fake IHL
@@ -87,6 +88,8 @@ namespace NetHex {
         // 2. Extract the Data Offset (The highest 4 bits of the 16-bit chunk)
         // We shift the bits right by 12 spaces to push the 4 bits to the bottom, then mask.
         uint8_t data_offset = (off_res_flags >> 12) & 0x0F;
+
+        if (data_offset < 5) return false; // Minimum TCP header is 20 bytes
         
         // The Data Offset tells us the header length in 32-bit words (just like IPv4 IHL)
         uint32_t actual_header_bytes = data_offset * 4;
