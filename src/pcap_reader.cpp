@@ -62,12 +62,21 @@ namespace NetHex {
         }
 
         // Security Check: Ensure malformed packets don't overflow our buffer
-        if (packet_header.incl_len > packet_buffer.size()) {
-            packet_header.incl_len = packet_buffer.size();
+        uint32_t read_len = packet_header.incl_len;
+        uint32_t overflow_bytes = 0;
+
+        if (read_len > packet_buffer.size()) {
+            overflow_bytes = read_len - packet_buffer.size();
+            read_len = packet_buffer.size();
         }
 
         // 2. Read the actual raw packet data directly into our pre-allocated buffer
-        file_stream.read(reinterpret_cast<char*>(packet_buffer.data()), packet_header.incl_len);
+        file_stream.read(reinterpret_cast<char*>(packet_buffer.data()), read_len);
+
+        // Jump over any excess payload bytes to align with the next packet header
+        if (overflow_bytes > 0) {
+            file_stream.seekg(overflow_bytes, std::ios::cur);
+        }
 
         if (!file_stream) {
             return false;
@@ -75,7 +84,7 @@ namespace NetHex {
 
         // 3. Point the output variables to our buffer
         packet_data = packet_buffer.data();
-        packet_length = packet_header.incl_len;
+        packet_length = read_len; // Use the capped length
 
         return true;
     }
