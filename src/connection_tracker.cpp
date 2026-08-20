@@ -109,8 +109,11 @@ namespace NetHex {
             else if (conn.state == TcpState::SYN_SENT && duration_seconds > 10) {
                 should_evict = true; // 2. SYN Flood Protection! No reply after 10 seconds? Kill it.
             } 
+            else if (conn.state == TcpState::SYN_RCVD && duration_seconds > 10) {
+                should_evict = true; // 3. Half-Open Connection Timeout! Client vanished during handshake.
+            }
             else if (conn.state == TcpState::ESTABLISHED && duration_seconds > 300) {
-                should_evict = true; // 3. Idle Timeout. No data for 5 minutes? Kill it.
+                should_evict = true; // 4. Idle Timeout. No data for 5 minutes? Kill it.
             }
 
             // THE SAFE DELETION
