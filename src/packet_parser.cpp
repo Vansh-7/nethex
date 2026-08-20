@@ -52,6 +52,16 @@ namespace NetHex {
         dest_ip = ntoh32(ip_header->dest_ip);
         next_protocol = ip_header->protocol;
 
+        // Extract the Fragment Offset and MF flags. 
+        uint16_t frag_off_flags = ntoh16(ip_header->frag_off);
+
+        // 0x3FFF isolates the MF (More Fragments) flag and the 13-bit fragment offset
+        if ((frag_off_flags & 0x3FFF) != 0) {
+            // This is an IP Fragment! It does NOT contain a valid L4 header.
+            // Return false to prevent payload bytes from corrupting the TCP parser.
+            return false; 
+        }
+
         // Calculate the actual header length using the IHL (Internet Header Length) field.
         // IHL is the lower 4 bits of the version_ihl byte. It represents the length in 32-bit words.
         uint8_t ihl = ip_header->version_ihl & 0x0F;
