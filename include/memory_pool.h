@@ -11,7 +11,7 @@ namespace NetHex {
         std::vector<std::vector<uint8_t>> pool;
         
         // A lock-free queue that simply holds the indices (0, 1, 2...) of available slots
-        ThreadSafeQueue<uint32_t> free_slots;
+        LockFreeQueue<uint32_t> free_slots;
         size_t max_payload_size;
 
     public:
