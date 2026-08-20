@@ -55,10 +55,14 @@ namespace NetHex {
                     while (trie[fail_state].children[i] == -1) {
                         fail_state = trie[fail_state].fail_link;
                     }
-                    trie[child].fail_link = trie[fail_state].children[i];
+                    
+                    // Assign the failure link
+                    int actual_fail_node = trie[fail_state].children[i];
+                    trie[child].fail_link = actual_fail_node;
 
-                    // Merge matches from the fail link (e.g., matching "he" also matches "e")
-                    for (const auto& match : trie[trie[child].fail_link].matched_patterns) {
+                    // SUB-PATTERN MERGING
+                    // Merge matches from the fail link (e.g., matching "eval" also matches "val")
+                    for (const auto& match : trie[actual_fail_node].matched_patterns) {
                         trie[child].matched_patterns.push_back(match);
                     }
                 }
