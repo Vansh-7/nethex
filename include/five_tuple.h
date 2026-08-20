@@ -33,7 +33,8 @@ namespace NetHex {
     inline FiveTuple create_bidirectional_tuple(uint32_t s_ip, uint32_t d_ip, 
                                                 uint16_t s_port, uint16_t d_port,
                                                 uint8_t proto) {
-        FiveTuple tuple;
+        // MUST zero-initialize {} so padding/unused bytes don't corrupt the xxHash!
+        FiveTuple tuple{};
         tuple.protocol = proto;
 
         // Sort the IPs and Ports so the hash is identical for both directions of the flow
