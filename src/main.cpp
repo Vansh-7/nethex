@@ -68,7 +68,7 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
             }
 
             // ZERO COPY MAGIC: RETURN THE MEMORY TO THE POOL!
-            if (packet.pool_slot_id != 0xFFFFFFFF) {
+            if (packet.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
                 mem_pool->release_slot(packet.pool_slot_id);
             }
 

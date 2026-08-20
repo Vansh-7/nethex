@@ -91,15 +91,17 @@ namespace NetHex {
         uint32_t pool_slot_id; 
         const uint8_t* payload_ptr;
         uint32_t payload_length;
+        
+        static constexpr uint32_t NO_PAYLOAD = 0xFFFFFFFF;
 
         // Constructors default the slot ID to 0xFFFFFFFF (meaning "No Payload")
         ParsedPacket() : src_ip(0), dest_ip(0), src_port(0), dest_port(0), 
-                         protocol(0), tcp_flags(0), pool_slot_id(0xFFFFFFFF), 
+                         protocol(0), tcp_flags(0), pool_slot_id(NO_PAYLOAD), 
                          payload_ptr(nullptr), payload_length(0) {}
 
         ParsedPacket(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport, uint8_t proto)
             : src_ip(sip), dest_ip(dip), src_port(sport), dest_port(dport), 
-              protocol(proto), tcp_flags(0), pool_slot_id(0xFFFFFFFF), 
+              protocol(proto), tcp_flags(0), pool_slot_id(NO_PAYLOAD), 
               payload_ptr(nullptr), payload_length(0) {}
     };
 }
