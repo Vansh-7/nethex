@@ -4,6 +4,7 @@
 #include "connection.h"
 #include "xxhash_functor.h"
 #include <unordered_map>
+#include <list>
 
 namespace NetHex {
 
