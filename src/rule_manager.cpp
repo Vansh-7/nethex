@@ -1,5 +1,5 @@
 #include "rule_manager.h"
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <fstream>
 #include <vector>
 
@@ -8,7 +8,7 @@ namespace NetHex {
     bool RuleManager::load_rules(const std::string& filepath, PatternMatcher& scanner) {
         std::ifstream file(filepath);
         if (!file.is_open()) {
-            std::cerr << "[RuleManager] CRITICAL ERROR: Could not open rule file: " << filepath << std::endl;
+            spdlog::critical("[RuleManager] CRITICAL ERROR: Could not open rule file: {}", filepath);
             return false;
         }
 
@@ -43,7 +43,7 @@ namespace NetHex {
         }
 
         file.close();
-        std::cout << "[RuleManager] Successfully loaded " << loaded_count << " signatures from " << filepath << std::endl;
+        spdlog::info("[RuleManager] Successfully loaded {} signatures from {}", loaded_count, filepath);
         return true;
     }
 

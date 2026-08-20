@@ -58,6 +58,14 @@ endif()
 target_link_libraries(nethex_core PUBLIC ${PCAP_LIBRARY} ${XXHASH_LIBRARY})
 target_include_directories(nethex_core PUBLIC ${PCAP_INCLUDE_DIRS})
 
+include(FetchContent)
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG        v1.12.0 # Or the latest stable version
+)
+FetchContent_MakeAvailable(spdlog)
+
 # ------------------------------------------------------------------------
 # MAIN EXECUTABLE (nethex)
 # ------------------------------------------------------------------------
@@ -66,7 +74,7 @@ target_include_directories(nethex_core PUBLIC ${PCAP_INCLUDE_DIRS})
 add_executable(nethex src/main.cpp)
 
 # Link the core library AND the newly found Threading library
-target_link_libraries(nethex PRIVATE nethex_core Threads::Threads)
+target_link_libraries(nethex PRIVATE nethex_core Threads::Threads spdlog::spdlog)
 
 # Link the Windows Socket library if compiling on Windows
 if(WIN32)

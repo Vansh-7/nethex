@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <iostream> // Added for error logging
+#include <spdlog/spdlog.h> // Async logging
 #include <thread>   // Added for cross-platform thread identification
 
 // OS-specific network includes
@@ -35,7 +35,7 @@ namespace NetHex {
         // Windows API for Thread Affinity
         DWORD_PTR mask = (DWORD_PTR)1 << core_id;
         if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0) {
-            std::cerr << "[Warning] Windows CPU pinning failed.\n";
+            spdlog::warn("Windows CPU pinning failed for core {}.", core_id);
         }
 #elif defined(__linux__)
         // Linux POSIX API for Strict Thread Affinity
@@ -43,7 +43,7 @@ namespace NetHex {
         CPU_ZERO(&cpuset);
         CPU_SET(core_id, &cpuset);
         if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
-            std::cerr << "[Warning] Linux CPU pinning failed.\n";
+            spdlog::warn("Linux CPU pinning failed for core {}.", core_id);
         }
 #elif defined(__APPLE__)
         // macOS does not allow strict hardware pinning. 
@@ -52,7 +52,7 @@ namespace NetHex {
         thread_port_t mach_thread = pthread_mach_thread_np(pthread_self());
         thread_policy_set(mach_thread, THREAD_AFFINITY_POLICY, (thread_policy_t)&policy, 1);
 #else
-        std::cerr << "[Warning] CPU pinning not supported on this OS. Running unpinned.\n";
+        spdlog::warn("CPU pinning not supported on this OS. Running unpinned.");
 #endif
     }
 }

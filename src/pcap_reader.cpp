@@ -1,5 +1,5 @@
 #include "pcap_reader.h"
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace NetHex {
 
@@ -17,7 +17,7 @@ namespace NetHex {
         // We MUST open the file in binary mode to read raw packet bytes
         file_stream.open(file_path, std::ios::binary);
         if (!file_stream.is_open()) {
-            std::cerr << "[NetHex] Error: Could not open PCAP file: " << file_path << std::endl;
+            spdlog::error("[NetHex] Error: Could not open PCAP file: {}", file_path);
             return false;
         }
 
@@ -27,17 +27,17 @@ namespace NetHex {
 
         // 2. Check explicitly if the read operation failed
         if (file_stream.fail()) {
-            std::cerr << "[NetHex] Error: Failed to read PCAP global header." << std::endl;
+            spdlog::error("[NetHex] Error: Failed to read PCAP global header.");
             return false;
         }
 
         // 3. Validate the Magic Number (0xa1b2c3d4 is standard microsecond resolution)
         if (global_header.magic_number != 0xa1b2c3d4 && global_header.magic_number != 0xa1b23c4d) {
-            std::cerr << "[NetHex] Error: Invalid PCAP magic number." << std::endl;
+            spdlog::error("[NetHex] Error: Invalid PCAP magic number.");
             return false;
         }
 
-        std::cout << "[NetHex] PCAP file opened successfully. Ready to ingest." << std::endl;
+        spdlog::info("[NetHex] PCAP file opened successfully. Ready to ingest.");
         return true;
     }
 

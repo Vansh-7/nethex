@@ -1,27 +1,30 @@
 #include "dpi_engine.h"
 #include "sni_extractor.h"
 #include "rule_manager.h"
+#include <spdlog/spdlog.h>
+#include <sstream>
+#include <iomanip>
 
 namespace NetHex {
 
     // Initialize the Engine and Load Signatures
     DpiEngine::DpiEngine() {
-        std::cout << "[DPI] Initializing Aho-Corasick Threat Scanner..." << std::endl;
+        spdlog::info("[DPI] Initializing Aho-Corasick Threat Scanner...");
         
         // Load signatures dynamically from the file!
         if (!RuleManager::load_rules("threats.rules", scanner)) {
-            std::cerr << "[DPI] WARNING: No external rules loaded. Engine is running blind!" << std::endl;
+            spdlog::warn("[DPI] WARNING: No external rules loaded. Engine is running blind!");
         }
         
         // Compile the Failure Links AFTER all rules are loaded
         scanner.build_machine();
-        std::cout << "[DPI] Threat Scanner Online. State machine compiled." << std::endl;
+        spdlog::info("[DPI] Threat Scanner Online. State machine compiled.");
     }
 
-    void DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple) {
+    bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple) {
         (void)tuple;
         // Safety Check: TCP packets often have 0 payload (e.g., pure ACK or SYN packets)
-        if (payload_length < 5 || payload == nullptr) return;
+        if (payload_length < 5 || payload == nullptr) return false;
 
         // Zero-copy window into the payload for protocol identification
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
@@ -29,34 +32,36 @@ namespace NetHex {
         // Traffic Routing: Send payload to correct L7 Decoder
         // 1. Is this HTTP? (Starts with GET, POST, or HTTP)
         if (data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
-            parse_http(payload, payload_length);
+            return parse_http(payload, payload_length);
         } 
         // 2. Is this TLS? (Byte 0 is 0x16 for Handshake, Byte 5 is 0x01 for Client Hello)
         else if (payload[0] == 0x16 && payload[5] == 0x01) {
             std::string sni_domain = SniExtractor::extract_sni(payload, payload_length);
             if (!sni_domain.empty()) {
-                std::cout << "\n[DPI] --- TLS Connection Detected ---" << std::endl;
-                std::cout << "    [Extracted SNI] " << sni_domain << std::endl;
+                spdlog::info("[DPI] --- TLS Connection Detected ---");
+                spdlog::info("    [Extracted SNI] {}", sni_domain);
             }
         } 
         // 3. Unknown Protocol
         else {
-            // std::cout << "\n[DPI] Unknown L7 Protocol. Dumping raw bytes:" << std::endl;
+            spdlog::debug("[DPI] Unknown L7 Protocol. Dumping raw bytes:");
             // print_hex_dump(payload, payload_length);
         }
+
+        return false; // no threats found
     }
 
-    void DpiEngine::parse_http(const uint8_t* payload, uint32_t payload_length) {
+    bool DpiEngine::parse_http(const uint8_t* payload, uint32_t payload_length) {
         // ZERO-COPY MAGIC: string_view
         // It provides string manipulation functions (like .find) without copying the data!
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
 
         // Is this actually an HTTP GET or POST request?
         if (data.substr(0, 4) != "GET " && data.substr(0, 5) != "POST ") {
-            return; 
+            return false; 
         }
 
-        std::cout << "\n[DPI] --- HTTP Request Detected ---" << std::endl;
+        spdlog::info("[DPI] --- HTTP Request Detected ---");
 
         // Extract the Host (e.g., Host: www.example.com\r\n)
         size_t host_pos = data.find("Host: ");
@@ -65,7 +70,7 @@ namespace NetHex {
             if (end_pos != std::string_view::npos) {
                 // Shift pointer past "Host: " (6 characters) and calculate the length of the domain
                 std::string_view host = data.substr(host_pos + 6, end_pos - (host_pos + 6));
-                std::cout << "    [Extracted Host] " << host << std::endl;
+                spdlog::info("    [Extracted Host] {}", host);
             }
         }
 
@@ -75,7 +80,7 @@ namespace NetHex {
             size_t end_pos = data.find("\r\n", ua_pos);
             if (end_pos != std::string_view::npos) {
                 std::string_view ua = data.substr(ua_pos + 12, end_pos - (ua_pos + 12));
-                std::cout << "    [Extracted User-Agent] " << ua << std::endl;
+                spdlog::info("    [Extracted User-Agent] {}", ua);
             }
         }
 
@@ -83,30 +88,37 @@ namespace NetHex {
         // We pass the raw payload pointer directly into our O(N) state machine
         std::vector<std::string> alerts = scanner.search(payload, payload_length);
         
-        for (const auto& alert : alerts) {
-            std::cout << "    [!!! THREAT ALERT !!!] Signature Match: " << alert << std::endl;
+        if (!alerts.empty()) {
+            for (const auto& alert : alerts) {
+                spdlog::critical("    [!!! THREAT ALERT !!!] Signature Match: {}", alert);
+            }
+            return true; // WE FOUND MALWARE!
         }
+        
+        return false; // Traffic is clean
     }
 
     void DpiEngine::print_hex_dump(const uint8_t* payload, uint32_t payload_length) {
         // Limit the dump to the first 32 bytes to avoid flooding the terminal
         uint32_t print_len = (payload_length < 32) ? payload_length : 32;
         
-        std::cout << "    [Hex] ";
+        std::ostringstream oss;
+        oss << "[Hex] ";
         for (uint32_t i = 0; i < print_len; ++i) {
-            std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)payload[i] << " ";
+           oss << std::hex << std::setw(2) << std::setfill('0') << (int)payload[i] << " ";
         }
         
-        std::cout << "  [ASCII] ";
+        oss << "  [ASCII] ";
         for (uint32_t i = 0; i < print_len; ++i) {
             char c = payload[i];
             // Only print printable ASCII characters; otherwise print a dot
             if (c >= 32 && c <= 126) {
-                std::cout << c;
+                oss << c;
             } else {
-                std::cout << '.';
+                oss << '.';
             }
         }
-        std::cout << std::dec << std::endl; // Reset back to standard decimal printing
+
+        spdlog::debug(oss.str());
     }
 }
