@@ -9,10 +9,18 @@ namespace NetHex {
 
     class ConnectionTracker {
     private:
+        // LRU: Wrap the connection with its location in the Linked List
+        struct TrackedFlow {
+            Connection conn;
+            std::list<FiveTuple>::iterator lru_it;
+        };
+
         // THE FLOW TABLE! 
-        // This is the most important data structure in the entire engine.
-        // It maps a FiveTuple (Key) to a Connection State (Value) using our custom xxHash.
-        std::unordered_map<FiveTuple, Connection, XxHashFunctor> flow_table;
+        // It maps a FiveTuple (Key) to a TrackedFlow wrapper (Value) using our custom xxHash.
+        std::unordered_map<FiveTuple, TrackedFlow, XxHashFunctor> flow_table;
+
+        // Doubly-Linked List: Front = Newest flows, Back = Oldest flows
+        std::list<FiveTuple> lru_list;
 
     public:
         ConnectionTracker() = default;

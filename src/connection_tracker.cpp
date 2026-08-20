@@ -20,15 +20,20 @@ namespace NetHex {
             
             if (is_syn && !is_ack) {
                 // Legitimate start of a TCP connection (First step of the Handshake)
-                Connection new_conn;
-                new_conn.state = TcpState::SYN_SENT;
-                new_conn.total_bytes = payload_size;
-                new_conn.total_packets = 1;
+                TrackedFlow new_flow;
+                new_flow.conn.state = TcpState::SYN_SENT;
+                new_flow.conn.total_bytes = payload_size;
+                new_flow.conn.total_packets = 1;
+                new_flow.conn.last_seen = std::chrono::steady_clock::now();
                 
-                // Insert it into our Hash Map
-                flow_table[tuple] = new_conn;
+                // LRU LOGIC
+                // Push the new tuple to the front of the list, and save that iterator in the map!
+                lru_list.push_front(tuple);
+                new_flow.lru_it = lru_list.begin();
 
-                spdlog::debug("[Tracker] [+] New Flow Created (SYN). Active Flows: {}", flow_table.size())
+                flow_table[tuple] = new_flow;
+
+                spdlog::debug("[Tracker] [+] New Flow Created (SYN). Active Flows: {}", flow_table.size());
             } else {
                 // SECURITY FEATURE: We saw a packet for a flow that doesn't exist, and it's NOT a SYN.
                 // This could be a late packet from a closed connection, or a hacker sending spoofed traffic!
@@ -37,12 +42,20 @@ namespace NetHex {
             }
         } else {
             // FLOW EXISTS! We pull out the existing state.
-            Connection& conn = it->second;
+            TrackedFlow& flow = it->second;
+            Connection& conn = flow.conn;
             
             // Update traffic stats and timestamps
             conn.total_bytes += payload_size;
             conn.total_packets += 1;
             conn.last_seen = std::chrono::steady_clock::now();
+
+            // --- ZERO ALLOCATION LRU UPDATE ---
+            // Move this flow to the very front of the list (it is the most recently used!)
+            // .splice() unlinks the node and relinks it at the head without allocating memory.
+            if (flow.lru_it != lru_list.begin()) {
+                lru_list.splice(lru_list.begin(), lru_list, flow.lru_it);
+            }
 
             // 3. The TCP State Machine Logic
             if (conn.state == TcpState::SYN_SENT && is_syn && is_ack) {
@@ -65,18 +78,25 @@ namespace NetHex {
         }
 
         // Return a pointer to the flow so main.cpp can use it for Fast-Path!
-        return &flow_table[tuple];
+        return &(it->second.conn);
     }
 
     void ConnectionTracker::evict_stale_sessions() {
         auto now = std::chrono::steady_clock::now();
         size_t evicted_count = 0;
 
-        // Notice we do NOT have a ++it in the loop definition. 
-        // We control the iterator manually to prevent Segmentation Faults!
-        for (auto it = flow_table.begin(); it != flow_table.end(); ) {
-            const Connection& conn = it->second;
+        // --- O(1) GARBAGE COLLECTOR ---
+        // Because the list is ordered by time, we ONLY check the very back of the list!
+        while (!lru_list.empty()) {
+            const FiveTuple& oldest_tuple = lru_list.back();
+            auto map_it = flow_table.find(oldest_tuple);
+
+            if (map_it == flow_table.end()) {
+                lru_list.pop_back(); // Safety fallback
+                continue;
+            }
             
+            const Connection& conn = map_it->second.conn;
             // Calculate how many seconds have passed since we last saw a packet for this flow
             auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - conn.last_seen).count();
 
@@ -95,12 +115,16 @@ namespace NetHex {
 
             // THE SAFE DELETION
             if (should_evict) {
-                // .erase() safely deletes the flow and returns a valid iterator to the next one
-                it = flow_table.erase(it); 
+                // Delete from Hash Map
+                flow_table.erase(map_it);
+                // Pop the pointer from the Linked List
+                lru_list.pop_back(); 
                 evicted_count++;
             } else {
-                // If we didn't delete it, we manually move to the next flow
-                ++it; 
+                // If the OLDEST connection in the entire engine 
+                // is not ready to be evicted, then NOTHING else is ready either! 
+                // We break instantly. Zero looping.
+                break;
             }
         }
 
