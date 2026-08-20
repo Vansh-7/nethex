@@ -58,35 +58,37 @@ namespace NetHex {
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
 
         // Is this actually an HTTP GET or POST request?
-        if (data.substr(0, 4) != "GET " && data.substr(0, 5) != "POST ") {
-            return false; 
-        }
+        bool is_request = (data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST ");
+        bool is_response = (data.substr(0, 5) == "HTTP/");
 
-        spdlog::info("[DPI] --- HTTP Request Detected ---");
+        if (!is_request && !is_response) return false;
 
-        // Extract the Host (e.g., Host: www.example.com\r\n)
-        size_t host_pos = data.find("Host: ");
-        if (host_pos != std::string_view::npos) {
-            size_t end_pos = data.find("\r\n", host_pos);
-            if (end_pos != std::string_view::npos) {
-                // Shift pointer past "Host: " (6 characters) and calculate the length of the domain
-                std::string_view host = data.substr(host_pos + 6, end_pos - (host_pos + 6));
-                spdlog::info("    [Extracted Host] {}", host);
+        if (is_request) {
+            spdlog::info("[DPI] --- HTTP Request Detected ---");
+
+            // Extract the Host (e.g., Host: www.example.com\r\n)
+            size_t host_pos = data.find("Host: ");
+            if (host_pos != std::string_view::npos) {
+                size_t end_pos = data.find("\r\n", host_pos);
+                if (end_pos != std::string_view::npos) {
+                    // Shift pointer past "Host: " (6 characters) and calculate the length of the domain
+                    std::string_view host = data.substr(host_pos + 6, end_pos - (host_pos + 6));
+                    spdlog::info("    [Extracted Host] {}", host);
+                }
+            }
+
+            // Extract the User-Agent (Browser & OS Fingerprint)
+            size_t ua_pos = data.find("User-Agent: ");
+            if (ua_pos != std::string_view::npos) {
+                size_t end_pos = data.find("\r\n", ua_pos);
+                if (end_pos != std::string_view::npos) {
+                    std::string_view ua = data.substr(ua_pos + 12, end_pos - (ua_pos + 12));
+                    spdlog::info("    [Extracted User-Agent] {}", ua);
+                }
             }
         }
 
-        // Extract the User-Agent (Browser & OS Fingerprint)
-        size_t ua_pos = data.find("User-Agent: ");
-        if (ua_pos != std::string_view::npos) {
-            size_t end_pos = data.find("\r\n", ua_pos);
-            if (end_pos != std::string_view::npos) {
-                std::string_view ua = data.substr(ua_pos + 12, end_pos - (ua_pos + 12));
-                spdlog::info("    [Extracted User-Agent] {}", ua);
-            }
-        }
-
-        // TRIGGER THE MALWARE SCANNER!
-        // We pass the raw payload pointer directly into our O(N) state machine
+        // TRIGGER THE MALWARE SCANNER FOR BOTH REQUESTS AND RESPONSES!
         std::vector<std::string> alerts = scanner.search(payload, payload_length);
         
         if (!alerts.empty()) {
