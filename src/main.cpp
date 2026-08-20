@@ -67,7 +67,13 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
 
             // Only run heavy inspection if it hasn't been bypassed
             if (!should_bypass && packet.payload_length > 0 && packet.payload_ptr != nullptr) {
-                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple)) {
+                
+                // Extract the Aho-Corasick state from the connection tracker. 
+                // If it's a stateless UDP packet (conn == nullptr), use a temporary dummy state.
+                int dummy_state = 0;
+                int& ac_state = (conn != nullptr) ? conn->ac_state : dummy_state;
+
+                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple, ac_state)) {
                     if (conn != nullptr) {
                         conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
                     }

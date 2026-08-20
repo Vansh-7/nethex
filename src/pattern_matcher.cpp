@@ -70,17 +70,15 @@ namespace NetHex {
         }
     }
 
-    std::vector<std::string> PatternMatcher::search(const uint8_t* payload, uint32_t payload_length) {
+    std::vector<std::string> PatternMatcher::search(const uint8_t* payload, uint32_t payload_length, int& current_state) {
         std::vector<std::string> results;
         if (payload_length == 0 || payload == nullptr) return results;
-
-        int current_state = 0;
 
         for (uint32_t i = 0; i < payload_length; ++i) {
             uint8_t byte_val = payload[i];
 
             // Follow fail links until we find a valid transition
-            while (trie[current_state].children[byte_val] == -1) {
+            while (current_state != 0 && trie[current_state].children[byte_val] == -1) {
                 current_state = trie[current_state].fail_link;
             }
 

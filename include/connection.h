@@ -41,5 +41,8 @@ namespace NetHex {
         uint32_t packet_count{0};    // How many packets we've seen in this flow
         bool is_bypassed{false};     // True if we decided to stop inspecting it
         bool is_malicious{false};    // True if we caught malware
+        
+        // Tracks the Aho-Corasick traversal node across multiple TCP segments
+        int ac_state = 0;
     };
 }

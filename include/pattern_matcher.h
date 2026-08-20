@@ -32,7 +32,7 @@ namespace NetHex {
         void build_machine();
 
         // 3. Scan a raw payload for any of the loaded patterns in a single pass
-        std::vector<std::string> search(const uint8_t* payload, uint32_t payload_length);
+        std::vector<std::string> search(const uint8_t* payload, uint32_t payload_length, int& current_state);
 
     private:
         // Memory-safe, contiguous array to hold our state machine

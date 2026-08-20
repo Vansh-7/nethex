@@ -21,7 +21,7 @@ namespace NetHex {
         spdlog::info("[DPI] Threat Scanner Online. State machine compiled.");
     }
 
-    bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple) {
+    bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple, int& ac_state) {
         (void)tuple;
         // Safety Check: TCP packets often have 0 payload. We need at least 6 bytes 
         // to safely check HTTP methods or the TLS Client Hello signature.
@@ -33,7 +33,7 @@ namespace NetHex {
         // Traffic Routing: Send payload to correct L7 Decoder
         // 1. Is this HTTP? (Starts with GET, POST, or HTTP)
         if (data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
-            return parse_http(payload, payload_length);
+            return parse_http(payload, payload_length, ac_state);
         } 
         // 2. Is this TLS? (Byte 0 is 0x16 for Handshake, Byte 5 is 0x01 for Client Hello)
         else if (payload[0] == 0x16 && payload[5] == 0x01) {
@@ -52,7 +52,7 @@ namespace NetHex {
         return false; // no threats found
     }
 
-    bool DpiEngine::parse_http(const uint8_t* payload, uint32_t payload_length) {
+    bool DpiEngine::parse_http(const uint8_t* payload, uint32_t payload_length, int& ac_state) {
         // ZERO-COPY MAGIC: string_view
         // It provides string manipulation functions (like .find) without copying the data!
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
@@ -89,16 +89,16 @@ namespace NetHex {
         }
 
         // TRIGGER THE MALWARE SCANNER FOR BOTH REQUESTS AND RESPONSES!
-        std::vector<std::string> alerts = scanner.search(payload, payload_length);
-        
+        std::vector<std::string> alerts = scanner.search(payload, payload_length, ac_state);
+
         if (!alerts.empty()) {
+            spdlog::warn("[THREAT ALERT !!!] Signature Match Detected in HTTP Stream!");
             for (const auto& alert : alerts) {
-                spdlog::critical("    [!!! THREAT ALERT !!!] Signature Match: {}", alert);
+                spdlog::warn("      -> {}", alert);
             }
-            return true; // WE FOUND MALWARE!
+            return true; // Malicious!
         }
-        
-        return false; // Traffic is clean
+        return false; // Clean!
     }
 
     void DpiEngine::print_hex_dump(const uint8_t* payload, uint32_t payload_length) {
