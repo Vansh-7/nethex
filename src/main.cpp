@@ -53,7 +53,7 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
             FiveTuple tuple{packet.src_ip, packet.dest_ip, packet.src_port, packet.dest_port, packet.protocol};
 
             // Update TCP State and retrieve the connection pointer
-            Connection* conn = tracker.process_tcp_packet(tuple, packet.tcp_flags, packet.payload.size());
+            Connection* conn = tracker.process_tcp_packet(tuple, packet.tcp_flags, packet.payload_length);
             
             // Safety check: if the tracker rejected the packet (e.g. out-of-state)
             if (conn != nullptr && !FastPath::should_bypass(*conn)) {
