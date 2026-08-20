@@ -19,7 +19,7 @@ namespace NetHex {
         ~ConnectionTracker() = default;
 
         // Core ingestion function: Call this every time we parse a TCP packet
-        void process_tcp_packet(const FiveTuple& tuple, uint8_t tcp_flags, uint32_t payload_size);
+        Connection* process_tcp_packet(const FiveTuple& tuple, uint8_t tcp_flags, uint32_t payload_size);
 
         // Garbage Collector: Cleans up dead or timed-out connections
         void evict_stale_sessions();

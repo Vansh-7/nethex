@@ -3,7 +3,7 @@
 
 namespace NetHex {
 
-    void ConnectionTracker::process_tcp_packet(const FiveTuple& tuple, uint8_t tcp_flags, uint32_t payload_size) {
+    Connection* ConnectionTracker::process_tcp_packet(const FiveTuple& tuple, uint8_t tcp_flags, uint32_t payload_size) {
         
         // 1. Bitwise Extraction of TCP Flags
         // The flags arrive as a single byte. We use bitwise AND (&) to isolate specific bits.
@@ -27,11 +27,12 @@ namespace NetHex {
                 
                 // Insert it into our Hash Map
                 flow_table[tuple] = new_conn;
-                std::cout << "[Tracker] [+] New Flow Created (SYN). Active Flows: " << flow_table.size() << std::endl;
+                // std::cout << "[Tracker] [+] New Flow Created (SYN). Active Flows: " << flow_table.size() << std::endl;
             } else {
                 // SECURITY FEATURE: We saw a packet for a flow that doesn't exist, and it's NOT a SYN.
                 // This could be a late packet from a closed connection, or a hacker sending spoofed traffic!
                 // We drop/ignore it to protect our engine's memory.
+                return nullptr;
             }
         } else {
             // FLOW EXISTS! We pull out the existing state.
@@ -50,17 +51,20 @@ namespace NetHex {
             else if (conn.state == TcpState::SYN_RCVD && is_ack) {
                 // Client replied with final ACK! Handshake is complete.
                 conn.state = TcpState::ESTABLISHED;
-                std::cout << "[Tracker] [==>] Flow ESTABLISHED! (Data can now be inspected)" << std::endl;
+                // std::cout << "[Tracker] [==>] Flow ESTABLISHED! (Data can now be inspected)" << std::endl;
             }
             else if (is_fin || is_rst) {
                 // The connection is being torn down.
                 conn.state = TcpState::CLOSED;
-                std::cout << "[Tracker] [-] Flow CLOSED." << std::endl;
+                // std::cout << "[Tracker] [-] Flow CLOSED." << std::endl;
                 
                 // Note: We don't delete it from the map immediately. 
                 // We leave it here so our future LRU Cache/Timeout system can clean it up efficiently.
             }
         }
+
+        // Return a pointer to the flow so main.cpp can use it for Fast-Path!
+        return &flow_table[tuple];
     }
 
     void ConnectionTracker::evict_stale_sessions() {
