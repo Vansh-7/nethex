@@ -25,7 +25,7 @@ namespace NetHex {
     }
 
     bool PacketParser::parse_ipv4(const uint8_t* packet_data, 
-                                  uint32_t packet_length, 
+                                  uint32_t& packet_length, 
                                   uint32_t& offset,
                                   uint32_t& src_ip,
                                   uint32_t& dest_ip,
@@ -55,6 +55,14 @@ namespace NetHex {
 
         // Advance the offset dynamically so Layer 4 (TCP/UDP) knows exactly where to start
         offset += actual_header_bytes;
+
+        // Truncate Ethernet padding! The true packet size is offset (start of IP) + IP total length.
+        uint16_t total_ip_len = ntoh16(ip_header->total_length);
+        uint32_t true_packet_len = (offset - actual_header_bytes) + total_ip_len; 
+        
+        if (true_packet_len < packet_length) {
+            packet_length = true_packet_len; // Chop off the trailing garbage!
+        }
 
         return true;
     }

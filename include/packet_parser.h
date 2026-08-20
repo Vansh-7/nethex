@@ -14,7 +14,7 @@ namespace NetHex {
         
         // Parse Layer 3: Extracts IPs and returns the next protocol (TCP/UDP)
         static bool parse_ipv4(const uint8_t* packet_data, 
-                               uint32_t packet_length, 
+                               uint32_t& packet_length, 
                                uint32_t& offset,
                                uint32_t& src_ip,
                                uint32_t& dest_ip,
