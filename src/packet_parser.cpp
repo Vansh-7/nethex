@@ -53,7 +53,7 @@ namespace NetHex {
         next_protocol = ip_header->protocol;
 
         // Extract the Fragment Offset and MF flags. 
-        uint16_t frag_off_flags = ntoh16(ip_header->frag_off);
+        uint16_t frag_off_flags = ntoh16(ip_header->flags_offset);
 
         // 0x3FFF isolates the MF (More Fragments) flag and the 13-bit fragment offset
         if ((frag_off_flags & 0x3FFF) != 0) {
