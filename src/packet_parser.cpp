@@ -78,7 +78,7 @@ namespace NetHex {
 
         // Truncate Ethernet padding! The true packet size is offset (start of IP) + IP total length.
         uint16_t total_ip_len = ntoh16(ip_header->total_length);
-        uint32_t true_packet_len = (offset - actual_header_bytes) + total_ip_len; 
+        uint32_t true_packet_len = offset + total_ip_len; 
         
         if (true_packet_len < packet_length) {
             packet_length = true_packet_len; // Chop off the trailing garbage!
