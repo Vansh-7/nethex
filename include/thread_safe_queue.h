@@ -79,4 +79,8 @@ public:
         tail_.store(current_tail + 1, std::memory_order_release);
         return true;
     }
+
+    bool empty() const {
+        return head_.load(std::memory_order_acquire) == tail_.load(std::memory_order_acquire);
+    }
 };
