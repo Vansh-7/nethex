@@ -115,6 +115,12 @@ namespace NetHex {
             else if (conn.state == TcpState::ESTABLISHED && duration_seconds > 300) {
                 should_evict = true; // 4. Idle Timeout. No data for 5 minutes? Kill it.
             }
+            else if (duration_seconds > 300) {
+                // 5. THE GC UNJAMMER (CATCH-ALL)
+                // If a flow is in FIN_WAIT or UNKNOWN and idle for 5 mins, kill it.
+                // This guarantees the O(1) loop NEVER gets permanently stuck!
+                should_evict = true; 
+            }
 
             // Because the list is chronological, if the oldest flow hasn't timed out, NOTHING has.
             if (!should_evict) {
