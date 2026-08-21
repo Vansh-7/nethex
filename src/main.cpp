@@ -79,9 +79,9 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
                 
                 // Extract Aho-Corasick state IF connection is tracked, otherwise use dummies for stateless UDP
                 int& ac_state = (conn != nullptr) ? conn->ac_state : dummy_state;
-                uint8_t& l7_proto = (conn != nullptr) ? conn->l7_protocol : dummy_l7;
+                uint8_t& l7_protocol = (conn != nullptr) ? conn->l7_protocol : dummy_l7;
 
-                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple, ac_state, l7_proto)) {
+                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple, ac_state, l7_protocol)) {
                     if (conn != nullptr) {
                         conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
                     }
@@ -138,6 +138,7 @@ int main(int argc, char* argv[]) {
     // Wrap initialization and execution in a try-catch block for absolute safety
     try {
         // Pin the Main Ingestion Thread to the last available core to prevent preemption of worker threads
+        if (num_cores == 0) num_cores = 1;
         NetHex::pin_thread_to_core(num_cores - 1);
         spdlog::info("[Main] Ingestion Thread pinned to CPU Core {}", num_cores - 1);
 
@@ -196,8 +197,8 @@ int main(int argc, char* argv[]) {
                         // Copy the Layer 7 Payload safely into the envelope for cross-thread transit
                         if (packet_len > offset) {
                             uint32_t p_len = packet_len - offset;
-                            uint32_t slot_id;
-                            uint8_t* buffer_ptr;
+                            uint32_t slot_id = 0;
+                            uint8_t* buffer_ptr = nullptr;
                             
                             // Borrow a slot from the pool. Spin-wait if exhausted.
                             while (!mem_pool.acquire_slot(slot_id, buffer_ptr) && keep_running) {

@@ -16,7 +16,7 @@ namespace NetHex {
 
             // Core inspection entry point
             // takes the raw payload pointer, its length, and flow fingerprint
-            bool inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple, int& ac_state, uint8_t& l7_proto);
+            bool inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple, int& ac_state, uint8_t& l7_protocol);
 
         private:
             // helper to safely visualize raw bytes during development
