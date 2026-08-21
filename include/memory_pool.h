@@ -23,8 +23,8 @@ namespace NetHex {
     public:
         PacketMemoryPool(size_t capacity, size_t payload_size = 2048) 
         : pool(capacity, std::vector<uint8_t>(payload_size)), 
-          is_free(capacity, true),
-          max_payload_size(payload_size) {
+          max_payload_size(payload_size),
+          is_free(capacity, true) {
             
             // At startup, every slot is free! Push all IDs into the queue.
             for (uint32_t i = 0; i < capacity; ++i) {
