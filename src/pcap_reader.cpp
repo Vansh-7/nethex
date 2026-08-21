@@ -17,7 +17,7 @@ namespace NetHex {
         // We MUST open the file in binary mode to read raw packet bytes
         file_stream.open(file_path, std::ios::binary);
         if (!file_stream.is_open()) {
-            spdlog::error("[NetHex] Error: Could not open PCAP file: {}", file_path);
+            spdlog::error("[PcapReader] Could not open PCAP file: {}", file_path);
             return false;
         }
 
@@ -27,18 +27,27 @@ namespace NetHex {
 
         // 2. Check explicitly if the read operation failed
         if (file_stream.fail()) {
-            spdlog::error("[NetHex] Error: Failed to read PCAP global header.");
+            spdlog::error("[PcapReader] Failed to read PCAP global header.");
             return false;
         }
 
         // 3. Validate the Magic Number (0xa1b2c3d4 is standard microsecond resolution)
-        if (global_header.magic_number != 0xa1b2c3d4 && global_header.magic_number != 0xa1b23c4d) {
-            spdlog::error("[NetHex] Error: Invalid PCAP magic number.");
+        // Native Endianness
+        if (global_header.magic_number == 0xa1b2c3d4 || global_header.magic_number == 0xa1b23c4d) {
+            spdlog::info("[PcapReader] PCAP file opened successfully. Ready to ingest.");
+            return true;
+        }
+        // Swapped Endianness (Foreign Architecture)
+        else if (global_header.magic_number == 0xd4c3b2a1 || global_header.magic_number == 0x4d3cb2a1) {
+            // TODO: Implement byte-swapping for PCAP headers to support cross-platform captures.
+            spdlog::error("[PcapReader] Foreign endianness PCAP detected. Byte-swapping is not yet supported.");
+            return false;
+        } 
+        // Completely Invalid
+        else {
+            spdlog::error("[PcapReader] Invalid PCAP magic number: {0:x}", global_header.magic_number);
             return false;
         }
-
-        spdlog::info("[NetHex] PCAP file opened successfully. Ready to ingest.");
-        return true;
     }
 
     void PcapFileReader::close() {
