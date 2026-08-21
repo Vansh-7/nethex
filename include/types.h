@@ -74,7 +74,7 @@ namespace NetHex {
     #pragma pack(pop)
 
     // ------------------------------------------------------------------------
-    // INTER-THREAD COMMUNICATION WAPPERS
+    // INTER-THREAD COMMUNICATION WRAPPERS
     // ------------------------------------------------------------------------
     // This is the "Envelope" passed across the Lock-Free Queue
     struct ParsedPacket {

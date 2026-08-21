@@ -35,7 +35,7 @@ namespace NetHex {
                 trie[trie[0].children[i]].fail_link = 0;
                 q.push(trie[0].children[i]);
             } else {
-                // Optimization: Loop unexisting root transitions back to root
+                // Optimization: Loop nonexistent root transitions back to root
                 trie[0].children[i] = 0; 
             }
         }
