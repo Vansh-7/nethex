@@ -53,7 +53,7 @@ namespace NetHex {
         // 1. Is this HTTP? (Starts with GET, POST, or HTTP)
         if (l7_proto == 1 || data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
             l7_proto = 1; //storing it also
-            parse_http(payload, payload_length, ac_state);
+            parse_http(payload, payload_length);
         } 
         // 2. Is this TLS? (Byte 0 is 0x16 for Handshake, Byte 5 is 0x01 for Client Hello)
         else if (payload_length >= 6 && payload[0] == 0x16 && payload[5] == 0x01) {
