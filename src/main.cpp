@@ -200,13 +200,16 @@ int main(int argc, char* argv[]) {
                             uint32_t slot_id = 0;
                             uint8_t* buffer_ptr = nullptr;
                             
+                            // 1. Create a local variable to capture the exact result
+                            bool acquired = false;
+                                                        
                             // Borrow a slot from the pool. Spin-wait if exhausted.
-                            while (!mem_pool.acquire_slot(slot_id, buffer_ptr) && keep_running) {
+                            while (keep_running && !(acquired = mem_pool.acquire_slot(slot_id, buffer_ptr))) {
                                 std::this_thread::yield();
                             }
 
-                            // Only proceed if we actually acquired a slot (i.e., we aren't shutting down)
-                            if (keep_running) {
+                            // 2. Base the next step ONLY on whether we successfully acquired the slot
+                            if (acquired) {
                                 // Copy payload exactly ONCE into the pre-allocated pool buffer
                                 uint32_t copy_size = (p_len > 2048) ? 2048 : p_len; 
                                 std::memcpy(buffer_ptr, raw_packet + offset, copy_size);
@@ -222,14 +225,18 @@ int main(int argc, char* argv[]) {
                         FiveTuple tuple = create_bidirectional_tuple(parsed.src_ip, parsed.dest_ip, parsed.src_port, parsed.dest_port, parsed.protocol);
                         uint64_t flow_hash = hash_fn(tuple);
 
+                        // Create a local variable to capture the exact dispatch result
+                        bool dispatched = false;
+
                         // Dispatch to the Lock-Free Queue!
                         // If the queue is full (returns false), we yield and retry until space opens up.
-                        while (!load_balancer.dispatch(parsed, flow_hash) && keep_running) {
+                        while (keep_running && !(dispatched = load_balancer.dispatch(parsed, flow_hash))) {
                             std::this_thread::yield(); 
                         }
 
-                        // If we stopped running before dispatching, return the slot to the pool
-                        if (!keep_running && parsed.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
+                        // Base the rollback ONLY on whether the dispatch actually failed
+                        // If it failed, it means the loop broke because keep_running became false.
+                        if (!dispatched && parsed.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
                             mem_pool.release_slot(parsed.pool_slot_id);
                         }
                     }
