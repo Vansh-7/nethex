@@ -66,7 +66,7 @@ namespace NetHex {
         // 1. Read the 16-byte packet header
         file_stream.read(reinterpret_cast<char*>(&packet_header), sizeof(PcapPacketHeader));
 
-        if (!file_stream || packet_header.incl_len == 0) {
+        if (!file_stream) {
             return false; // Reached end of file
         }
 
