@@ -30,11 +30,11 @@ namespace NetHex {
                 // Push the new tuple to the front of the list, and save that iterator in the map!
                 lru_list.push_front(tuple);
                 new_flow.lru_it = lru_list.begin();
-                // Insert into map (This may cause a rehash!)
-                flow_table[tuple] = new_flow;
+                // Insert into map
+                auto [it2, inserted] = flow_table.emplace(tuple, std::move(new_flow));
                 spdlog::debug("[Tracker] [+] New Flow Created (SYN). Active Flows: {}", flow_table.size());
 
-                return &(flow_table[tuple].conn);
+                return &(it2->second.conn);
             } else {
                 // SECURITY FEATURE: We saw a packet for a flow that doesn't exist, and it's NOT a SYN.
                 // This could be a late packet from a closed connection, or a hacker sending spoofed traffic!
