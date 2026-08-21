@@ -10,14 +10,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # DEPENDENCIES
 # ------------------------------------------------------------------------
 
-# find necessary dependencies (PCAP header and library)
-find_path(PCAP_INCLUDE_DIR pcap.h)
-find_library(PCAP_LIBRARY pcap)
-
-if(NOT PCAP_INCLUDE_DIR OR NOT PCAP_LIBRARY)
-    message(FATAL_ERROR "PCAP library not found! Please install libpcap-dev.")
-endif()
-
 # find the xxHash header and library
 find_path(XXHASH_INCLUDE_DIR xxhash.h)
 find_library(XXHASH_LIBRARY xxhash)
@@ -54,9 +46,9 @@ elseif(MSVC)
     target_compile_options(nethex_core PRIVATE /W4 /WX /O2)
 endif()
 
-# Link libpcap AND xxHash to our core library
-target_link_libraries(nethex_core PUBLIC ${PCAP_LIBRARY} ${XXHASH_LIBRARY})
-target_include_directories(nethex_core PUBLIC ${PCAP_INCLUDE_DIRS})
+# Link xxHash to our core library
+target_link_libraries(nethex_core PUBLIC ${XXHASH_LIBRARY})
+target_include_directories(nethex_core PUBLIC ${XXHASH_INCLUDE_DIR})
 
 include(FetchContent)
 FetchContent_Declare(
