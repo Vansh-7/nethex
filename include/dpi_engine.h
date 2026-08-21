@@ -2,6 +2,8 @@
 
 #include "five_tuple.h"
 #include "pattern_matcher.h"
+#include "dns_parser.h"
+
 #include <cstdint>
 #include <iostream>
 #include <iomanip>

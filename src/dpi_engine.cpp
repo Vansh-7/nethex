@@ -1,6 +1,7 @@
 #include "dpi_engine.h"
 #include "sni_extractor.h"
 #include "rule_manager.h"
+#include "dns_parser.h"
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <iomanip>
@@ -33,7 +34,6 @@ namespace NetHex {
     }
 
     bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple, int& ac_state, uint8_t& l7_protocol) {
-        (void)tuple;
 
         // Basic safety catch for absolutely empty payloads
         if (payload_length == 0 || payload == nullptr) return false;
@@ -57,24 +57,35 @@ namespace NetHex {
         // ==========================================
         // 2. PROTOCOL IDENTIFICATION (Safe Bounds Checking)
         // ==========================================
-        // Zero-copy window into the payload for protocol identification
         std::string_view data(reinterpret_cast<const char*>(payload), payload_length);
 
         // Traffic Routing: Send payload to correct L7 Decoder
         // 1. Is this HTTP? (Starts with GET, POST, or HTTP)
         if (l7_protocol == 1 || data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
-            l7_protocol = 1; //storing it also
+            l7_protocol = 1;
             parse_http(payload, payload_length);
-        } 
+        }
         // 2. Is this TLS? (Byte 0 is 0x16 for Handshake, Byte 5 is 0x01 for Client Hello)
-        else if (payload_length >= 6 && payload[0] == 0x16 && payload[5] == 0x01) {
+        else if (l7_protocol == 2 || (payload_length >= 6 && payload[0] == 0x16 && payload[5] == 0x01)) {
+            l7_protocol = 2;
             std::string sni_domain = SniExtractor::extract_sni(payload, payload_length);
             if (!sni_domain.empty()) {
                 spdlog::info("[DPI] --- TLS Connection Detected ---");
                 spdlog::info("    [Extracted SNI] {}", sanitize_for_log(sni_domain));
             }
-        } 
-        // 3. Unknown Protocol
+        }
+        // 3. Is this DNS? (Standard port 53)
+        else if (tuple.src_port == 53 || tuple.dest_port == 53) {
+            auto queries = DnsParser::extract_queries(payload, payload_length);
+            if (!queries.empty()) {
+                l7_protocol = 3;
+                spdlog::info("[DPI] --- DNS Message Detected ---");
+                for (const auto& q : queries) {
+                    spdlog::info("    [Queried Domain] {}", sanitize_for_log(q.domain));
+                }
+            }
+        }
+        // 4. Unknown Protocol
         else {
             spdlog::debug("[DPI] Unknown L7 Protocol. Dumping raw bytes:");
             // print_hex_dump(payload, payload_length);

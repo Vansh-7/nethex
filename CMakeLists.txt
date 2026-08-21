@@ -42,6 +42,7 @@ add_library(nethex_core STATIC
     src/sni_extractor.cpp
     src/pattern_matcher.cpp
     src/rule_manager.cpp
+    src/dns_parser.cpp
 ) 
 
 # Specify where the headers live

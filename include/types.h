@@ -69,6 +69,19 @@ namespace NetHex {
         uint16_t checksum;       // Checksum
     };
 
+    // ------------------------------------------------------------------------
+    // LAYER 7: DNS (Domain Name System) - fixed 12-byte header;
+    // Questions are variable-length and decoded separately (see DnsParser).
+    // ------------------------------------------------------------------------
+    struct DnsHeader {
+        uint16_t transaction_id;
+        uint16_t flags;
+        uint16_t qd_count;   // Number of Questions
+        uint16_t an_count;   // Number of Answer Resource Records
+        uint16_t ns_count;   // Number of Authority Resource Records
+        uint16_t ar_count;   // Number of Additional Resource Records
+    };
+
     // Restore the default compiler packing behavior so we don't mess up 
     // the rest of our standard C++ code.
     #pragma pack(pop)
