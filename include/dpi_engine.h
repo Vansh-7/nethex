@@ -23,7 +23,7 @@ namespace NetHex {
             void print_hex_dump(const uint8_t* payload, uint32_t payload_length);
 
             // unencrypted HTTP Payload Extractor
-            bool parse_http(const uint8_t* payload, uint32_t payload_length, int& ac_state);
+            bool parse_http(const uint8_t* payload, uint32_t payload_length);
 
             // Our high-speed scanner
             PatternMatcher scanner;
