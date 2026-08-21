@@ -34,6 +34,10 @@ namespace NetHex {
                 if (end_pos != std::string::npos) {
                     // Extract the signature!
                     std::string signature = line.substr(start_pos, end_pos - start_pos);
+                    if (signature.empty()) {
+                        spdlog::warn("[RuleManager] Skipping empty content signature on line: {}", line);
+                        continue;
+                    }
                     
                     // Add it to our Aho-Corasick Engine
                     scanner.add_pattern(signature);
