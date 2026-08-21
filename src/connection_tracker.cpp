@@ -123,7 +123,7 @@ namespace NetHex {
 
             // THE SAFE DELETION
             spdlog::debug("[Tracker] Evicting stale flow.");
-            flow_table.erase(it);
+            flow_table.erase(map_it);
             lru_list.pop_back(); 
             evicted_count++;
         }
