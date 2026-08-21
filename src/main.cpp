@@ -33,14 +33,12 @@ void signal_handler(int) {
 void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
     // 1. Cross-Platform CPU Pinning
     NetHex::pin_thread_to_core(core_id);
-
     spdlog::info("[Worker {}] Online and pinned to CPU Core {}", core_id, core_id);
 
     // 2. Private State! (No Mutexes Needed)
     // Every worker has its own dedicated memory for tracking flows and patterns.
     ConnectionTracker tracker;
     DpiEngine dpi_engine;
-    uint32_t gc_counter = 0;
     
     // Grab the specific lock-free queue for this worker
     auto* my_queue = lb->get_queue(core_id);
@@ -50,7 +48,7 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
     uint32_t loop_counter = 0;
 
     // 3. The High-Speed Polling Loop
-    while (keep_running) {
+    while (keep_running || !my_queue->empty()) {
         if (my_queue->pop(packet)) {
 
             // Reconstruct the bi-direction 5-tuple for the tracker
@@ -63,32 +61,40 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
                 // Optionally implement tracker.process_udp_packet() in the future.
                 // For now, we skip UDP connection tracking.
             }
-            
-            // Safety check: if the tracker rejected the packet (e.g. out-of-state)
-            // Only bypass if we have a tracked state AND the fast path says to bypass
-            bool should_bypass = (conn != nullptr) && FastPath::should_bypass(*conn);
+
+            // FAST-PATH WITH MEMORY SAFETY
+            if (conn != nullptr && FastPath::should_bypass(*conn)) {
+                // We are bypassing! Release zero-copy memory immediately before we jump.
+                if (packet.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
+                    mem_pool->release_slot(packet.pool_slot_id);
+                }
+                continue; // Instantly skip the rest of the loop! Maximum CPU cycles saved.
+            };
 
             // Only run heavy inspection if it hasn't been bypassed
-            if (!should_bypass && packet.payload_length > 0 && packet.payload_ptr != nullptr) {
+            if (packet.payload_length > 0 && packet.payload_ptr != nullptr) {
                 
-                // Extract the Aho-Corasick state from the connection tracker. 
-                // If it's a stateless UDP packet (conn == nullptr), use a temporary dummy state.
                 int dummy_state = 0;
+                uint8_t dummy_l7 = 0;
+                
+                // Extract Aho-Corasick state IF connection is tracked, otherwise use dummies for stateless UDP
                 int& ac_state = (conn != nullptr) ? conn->ac_state : dummy_state;
+                uint8_t& l7_proto = (conn != nullptr) ? conn->l7_protocol : dummy_l7;
 
-                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple, ac_state)) {
+                if (dpi_engine.inspect_payload(packet.payload_ptr, packet.payload_length, tuple, ac_state, l7_proto)) {
                     if (conn != nullptr) {
                         conn->is_malicious = true; // Mark as bad! Fast-Path will now block this forever.
                     }
                 }
             }
 
-            // ZERO COPY MAGIC: RETURN THE MEMORY TO THE POOL!
+            // NORMAL ZERO-COPY RELEASE (For packets that actually went through DPI)
             if (packet.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
                 mem_pool->release_slot(packet.pool_slot_id);
             }
-        } 
-        else {
+        } else if (!keep_running){
+            break; // Queue is empty AND main thread said stop. Safe to exit.
+        } else {
             // If the queue is empty, yield the CPU slightly so we don't burn 
             // 100% of the core doing a busy-wait loop.
             std::this_thread::yield(); 

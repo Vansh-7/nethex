@@ -21,7 +21,7 @@ namespace NetHex {
         spdlog::info("[DPI] Threat Scanner Online. State machine compiled.");
     }
 
-    bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple, int& ac_state) {
+    bool DpiEngine::inspect_payload(const uint8_t* payload, uint32_t payload_length, const FiveTuple& tuple, int& ac_state, uint8_t& l7_proto) {
         (void)tuple;
 
         // Basic safety catch for absolutely empty payloads
@@ -51,7 +51,8 @@ namespace NetHex {
 
         // Traffic Routing: Send payload to correct L7 Decoder
         // 1. Is this HTTP? (Starts with GET, POST, or HTTP)
-        if (data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
+        if (l7_proto == 1 || data.substr(0, 4) == "GET " || data.substr(0, 5) == "POST " || data.substr(0, 5) == "HTTP/") {
+            l7_proto = 1; //storing it also
             parse_http(payload, payload_length, ac_state);
         } 
         // 2. Is this TLS? (Byte 0 is 0x16 for Handshake, Byte 5 is 0x01 for Client Hello)

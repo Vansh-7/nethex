@@ -44,5 +44,9 @@ namespace NetHex {
         
         // Tracks the Aho-Corasick traversal node across multiple TCP segments
         int ac_state = 0;
+
+        // Persist the L7 Protocol 
+        // 0 = Unknown, 1 = HTTP, 2 = TLS
+        uint8_t l7_protocol = 0;
     };
 }
