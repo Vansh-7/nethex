@@ -5,6 +5,17 @@
 #include <sstream>
 #include <iomanip>
 
+namespace {
+    std::string sanitize_for_log(std::string_view input) {
+        std::string out;
+        out.reserve(input.size());
+        for (unsigned char c : input) {
+            out += (c >= 32 && c <= 126) ? static_cast<char>(c) : '.';
+        }
+        return out;
+    }
+}
+
 namespace NetHex {
 
     // Initialize the Engine and Load Signatures
@@ -60,7 +71,7 @@ namespace NetHex {
             std::string sni_domain = SniExtractor::extract_sni(payload, payload_length);
             if (!sni_domain.empty()) {
                 spdlog::info("[DPI] --- TLS Connection Detected ---");
-                spdlog::info("    [Extracted SNI] {}", sni_domain);
+                spdlog::info("    [Extracted SNI] {}", sanitize_for_log(sni_domain));
             }
         } 
         // 3. Unknown Protocol
@@ -93,7 +104,7 @@ namespace NetHex {
                 if (end_pos != std::string_view::npos) {
                     // Shift pointer past "Host: " (6 characters) and calculate the length of the domain
                     std::string_view host = data.substr(host_pos + 6, end_pos - (host_pos + 6));
-                    spdlog::info("    [Extracted Host] {}", host);
+                    spdlog::info("    [Extracted Host] {}", sanitize_for_log(host));
                 }
             }
 
@@ -103,7 +114,7 @@ namespace NetHex {
                 size_t end_pos = data.find("\r\n", ua_pos);
                 if (end_pos != std::string_view::npos) {
                     std::string_view ua = data.substr(ua_pos + 12, end_pos - (ua_pos + 12));
-                    spdlog::info("    [Extracted User-Agent] {}", ua);
+                    spdlog::info("    [Extracted User-Agent] {}", sanitize_for_log(ua));
                 }
             }
 
