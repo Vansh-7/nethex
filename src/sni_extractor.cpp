@@ -56,6 +56,8 @@ namespace NetHex {
                 if (offset + sni_len <= ext_end) {
                     return std::string(reinterpret_cast<const char*>(payload + offset), sni_len);
                 }
+
+                return "";
             }
             // Jump to the next extension if this wasn't SNI
             offset += ext_len; 
