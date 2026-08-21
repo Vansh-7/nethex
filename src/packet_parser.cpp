@@ -73,12 +73,16 @@ namespace NetHex {
             return false;
         }
 
+        // Capture the start of the IP header BEFORE we advance the offset
+        uint32_t ip_start_offset = offset;
+
         // Advance the offset dynamically so Layer 4 (TCP/UDP) knows exactly where to start
         offset += actual_header_bytes;
 
-        // Truncate Ethernet padding! The true packet size is offset (start of IP) + IP total length.
+        // Truncate Ethernet padding! 
+        // True packet size is the start of the IP header + total IP length.
         uint16_t total_ip_len = ntoh16(ip_header->total_length);
-        uint32_t true_packet_len = offset + total_ip_len; 
+        uint32_t true_packet_len = ip_start_offset + total_ip_len; 
         
         if (true_packet_len < packet_length) {
             packet_length = true_packet_len; // Chop off the trailing garbage!
