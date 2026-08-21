@@ -4,11 +4,12 @@ FROM ubuntu:22.04
 # 2. Prevent Ubuntu from pausing the build to ask for timezone inputs
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 3. Install our exact build tools and dependencies (xxHash)
+# 3. Install our exact build tools and dependencies (xxHash + Git for CMake FetchContent)
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libxxhash-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # 4. Create a working directory inside the container
