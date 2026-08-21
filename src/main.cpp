@@ -46,6 +46,9 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
     auto* my_queue = lb->get_queue(core_id);
     ParsedPacket packet;
 
+    // Add a loop counter for the GC
+    uint32_t loop_counter = 0;
+
     // 3. The High-Speed Polling Loop
     while (keep_running) {
         if (my_queue->pop(packet)) {
@@ -84,18 +87,20 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
             if (packet.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
                 mem_pool->release_slot(packet.pool_slot_id);
             }
-
-            // garbage collector trigger!
-            gc_counter++;
-            if (gc_counter >= 10000) {
-                tracker.evict_stale_sessions();
-                gc_counter = 0;
-            }
-
-        } else {
+        } 
+        else {
             // If the queue is empty, yield the CPU slightly so we don't burn 
             // 100% of the core doing a busy-wait loop.
             std::this_thread::yield(); 
+        }
+
+        // --- BACKGROUND GARBAGE COLLECTION ---
+        // This increments whether we processed a packet OR yielded. 
+        // It guarantees cleanup even during complete network silence!
+        loop_counter++;
+        if (loop_counter >= 100000) {
+            tracker.evict_stale_sessions();
+            loop_counter = 0;
         }
     }
     
@@ -174,10 +179,10 @@ int main(int argc, char* argv[]) {
 
                         // Parse Layer 4 (TCP / UDP)
                         if (next_proto_l3 == 6) { 
-                            PacketParser::parse_tcp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port, tcp_flags);
+                            if(!PacketParser::parse_tcp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port, tcp_flags)) continue;
                             parsed.tcp_flags = tcp_flags;
                         } else if (next_proto_l3 == 17) { 
-                            PacketParser::parse_udp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port);
+                            if(!PacketParser::parse_udp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port)) continue;
                         } else {
                             continue; // Drop ICMP or other unsupported L4 protocols to save memory pool slots
                         }
