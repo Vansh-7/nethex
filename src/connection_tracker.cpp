@@ -30,10 +30,11 @@ namespace NetHex {
                 // Push the new tuple to the front of the list, and save that iterator in the map!
                 lru_list.push_front(tuple);
                 new_flow.lru_it = lru_list.begin();
-
+                // Insert into map (This may cause a rehash!)
                 flow_table[tuple] = new_flow;
-
                 spdlog::debug("[Tracker] [+] New Flow Created (SYN). Active Flows: {}", flow_table.size());
+
+                return &(flow_table[tuple].conn);
             } else {
                 // SECURITY FEATURE: We saw a packet for a flow that doesn't exist, and it's NOT a SYN.
                 // This could be a late packet from a closed connection, or a hacker sending spoofed traffic!
@@ -75,10 +76,9 @@ namespace NetHex {
                 // Note: We don't delete it from the map immediately. 
                 // We leave it here so our future LRU Cache/Timeout system can clean it up efficiently.
             }
-        }
 
-        // Return a pointer to the flow so main.cpp can use it for Fast-Path!
-        return &(it->second.conn);
+            return &conn;
+        }
     }
 
     void ConnectionTracker::evict_stale_sessions() {
@@ -116,19 +116,16 @@ namespace NetHex {
                 should_evict = true; // 4. Idle Timeout. No data for 5 minutes? Kill it.
             }
 
-            // THE SAFE DELETION
-            if (should_evict) {
-                // Delete from Hash Map
-                flow_table.erase(map_it);
-                // Pop the pointer from the Linked List
-                lru_list.pop_back(); 
-                evicted_count++;
-            } else {
-                // If the OLDEST connection in the entire engine 
-                // is not ready to be evicted, then NOTHING else is ready either! 
-                // We break instantly. Zero looping.
-                break;
+            // Because the list is chronological, if the oldest flow hasn't timed out, NOTHING has.
+            if (!should_evict) {
+                break; 
             }
+
+            // THE SAFE DELETION
+            spdlog::debug("[Tracker] Evicting stale flow.");
+            flow_table.erase(it);
+            lru_list.pop_back(); 
+            evicted_count++;
         }
 
         if (evicted_count > 0) {
