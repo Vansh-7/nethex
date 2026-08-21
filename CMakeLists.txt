@@ -65,6 +65,12 @@ FetchContent_MakeAvailable(spdlog)
 # main executable
 add_executable(nethex src/main.cpp)
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(nethex PRIVATE -Wall -Wextra -Werror -Wpedantic -O3)
+elseif(MSVC)
+    target_compile_options(nethex PRIVATE /W4 /WX /O2)
+endif()
+
 # Link the core library AND the newly found Threading library
 target_link_libraries(nethex PRIVATE nethex_core Threads::Threads spdlog::spdlog)
 
