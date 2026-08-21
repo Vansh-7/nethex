@@ -30,10 +30,10 @@ void signal_handler(int) {
 // ------------------------------------------------------------------------
 // THE WORKER THREAD (CONSUMER)
 // ------------------------------------------------------------------------
-void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
+void worker_node(int worker_id, int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
     // 1. Cross-Platform CPU Pinning
     NetHex::pin_thread_to_core(core_id);
-    spdlog::info("[Worker {}] Online and pinned to CPU Core {}", core_id, core_id);
+    spdlog::info("[Worker {}] Online and pinned to CPU Core {}", worker_id, core_id);
 
     // 2. Private State! (No Mutexes Needed)
     // Every worker has its own dedicated memory for tracking flows and patterns.
@@ -41,7 +41,7 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
     DpiEngine dpi_engine;
     
     // Grab the specific lock-free queue for this worker
-    auto* my_queue = lb->get_queue(core_id);
+    auto* my_queue = lb->get_queue(worker_id);
     ParsedPacket packet;
 
     // Add a loop counter for the GC
@@ -69,7 +69,7 @@ void worker_node(int core_id, LoadBalancer* lb, PacketMemoryPool* mem_pool) {
                     mem_pool->release_slot(packet.pool_slot_id);
                 }
                 continue; // Instantly skip the rest of the loop! Maximum CPU cycles saved.
-            };
+            }
 
             // Only run heavy inspection if it hasn't been bypassed
             if (packet.payload_length > 0 && packet.payload_ptr != nullptr) {
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
         // Spin up the worker threads
         std::vector<std::thread> workers;
         for (size_t i = 0; i < num_workers; ++i) {
-            workers.emplace_back(worker_node, i, &load_balancer, &mem_pool);
+            workers.emplace_back(worker_node, i, i, &load_balancer, &mem_pool);
         }
 
         // Open the target PCAP File
@@ -186,10 +186,10 @@ int main(int argc, char* argv[]) {
 
                         // Parse Layer 4 (TCP / UDP)
                         if (next_proto_l3 == 6) { 
-                            if(!PacketParser::parse_tcp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port, tcp_flags)) continue;
+                            if (!PacketParser::parse_tcp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port, tcp_flags)) continue;
                             parsed.tcp_flags = tcp_flags;
                         } else if (next_proto_l3 == 17) { 
-                            if(!PacketParser::parse_udp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port)) continue;
+                            if (!PacketParser::parse_udp(raw_packet, packet_len, offset, parsed.src_port, parsed.dest_port)) continue;
                         } else {
                             continue; // Drop ICMP or other unsupported L4 protocols to save memory pool slots
                         }
@@ -226,6 +226,11 @@ int main(int argc, char* argv[]) {
                         // If the queue is full (returns false), we yield and retry until space opens up.
                         while (!load_balancer.dispatch(parsed, flow_hash) && keep_running) {
                             std::this_thread::yield(); 
+                        }
+
+                        // If we stopped running before dispatching, return the slot to the pool
+                        if (!keep_running && parsed.pool_slot_id != ParsedPacket::NO_PAYLOAD) {
+                            mem_pool.release_slot(parsed.pool_slot_id);
                         }
                     }
                 }
