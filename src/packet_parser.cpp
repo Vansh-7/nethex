@@ -39,7 +39,10 @@ namespace NetHex {
                                   uint32_t& offset,
                                   uint32_t& src_ip,
                                   uint32_t& dest_ip,
-                                  uint8_t& next_protocol) {
+                                  uint8_t& next_protocol,
+                                  uint16_t& identification,
+                                  uint16_t& fragment_offset_units,
+                                  bool& more_fragments) {
         // Base safety check for the minimum IPv4 header size
         if (packet_length < offset + sizeof(IPv4Header)) {
             return false;
@@ -51,16 +54,12 @@ namespace NetHex {
         src_ip = ntoh32(ip_header->src_ip);
         dest_ip = ntoh32(ip_header->dest_ip);
         next_protocol = ip_header->protocol;
+        identification = ntoh16(ip_header->identification);
 
         // Extract the Fragment Offset and MF flags. 
         uint16_t frag_off_flags = ntoh16(ip_header->flags_offset);
-
-        // 0x3FFF isolates the MF (More Fragments) flag and the 13-bit fragment offset
-        if ((frag_off_flags & 0x3FFF) != 0) {
-            // This is an IP Fragment! It does NOT contain a valid L4 header.
-            // Return false to prevent payload bytes from corrupting the TCP parser.
-            return false; 
-        }
+        more_fragments = (frag_off_flags & 0x2000) != 0;   // Bit 13: More Fragments
+        fragment_offset_units = frag_off_flags & 0x1FFF;   // Bits 12-0: Fragment Offset (8-byte units)
 
         // Calculate the actual header length using the IHL (Internet Header Length) field.
         // IHL is the lower 4 bits of the version_ihl byte. It represents the length in 32-bit words.
@@ -82,6 +81,7 @@ namespace NetHex {
         // Truncate Ethernet padding! 
         // True packet size is the start of the IP header + total IP length.
         uint16_t total_ip_len = ntoh16(ip_header->total_length);
+        if (total_ip_len < actual_header_bytes) return false;
         uint32_t true_packet_len = ip_start_offset + total_ip_len; 
         
         if (true_packet_len < packet_length) {
